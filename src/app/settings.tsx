@@ -6,13 +6,14 @@ import { Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/button';
+import { DelayRow } from '@/components/delay-row';
 import { Segmented } from '@/components/segmented';
 import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { setPreference, usePreferences } from '@/lib/preferences';
-import { SeekStepOptions } from '@/lib/settings-schema';
+import { AUDIO_DELAY_RANGE, SeekStepOptions, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS } from '@/lib/settings-schema';
 
 const isWeb = Platform.OS === 'web';
 
@@ -141,6 +142,29 @@ export default function SettingsScreen() {
           <Field label="Double-tap to skip">
             <Segmented options={SeekStepOptions.map((s) => ({ value: s, label: `${s} s` }))} value={prefs.seekStep} onChange={(v) => setPreference('seekStep', v)} dense />
           </Field>
+        </Group>
+
+        <Group title="Audio & subtitle sync">
+          <View style={styles.field}>
+            <DelayRow
+              label="Default audio delay"
+              detail={`Every video starts with this. Plus: sound later. Minus: sound earlier.${isWeb ? ' In the browser, sound can be at most 0.5 s early.' : ''}`}
+              value={prefs.audioDelayMs}
+              big={500}
+              min={isWeb ? WEB_MIN_AUDIO_DELAY_MS : AUDIO_DELAY_RANGE.min}
+              max={AUDIO_DELAY_RANGE.max}
+              onChange={(v) => setPreference('audioDelayMs', v)}
+            />
+            <DelayRow
+              label="Default subtitle delay"
+              detail="Plus: subtitles later. Minus: earlier. You can still adjust each video from the player; tap a number to reset it to 0."
+              value={prefs.subtitleDelayMs}
+              big={1000}
+              min={SUBTITLE_DELAY_RANGE.min}
+              max={SUBTITLE_DELAY_RANGE.max}
+              onChange={(v) => setPreference('subtitleDelayMs', v)}
+            />
+          </View>
         </Group>
 
         <Group title="Subtitles">

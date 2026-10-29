@@ -124,6 +124,11 @@ eq(s.normalizePreferences({}).subtitleStyle, s.DefaultSubtitleStyle, 'old saved 
 eq([s.normalizePreferences({}).gestureBrightness, s.normalizePreferences({}).gestureVolume], [true, true], 'swipe gestures on by default');
 eq(s.normalizePreferences({ gestureBrightness: false, gestureVolume: 'no' }).gestureBrightness, false, 'brightness swipe can be turned off');
 eq(s.normalizePreferences({ gestureVolume: 'no' }).gestureVolume, true, 'bad saved value → default');
+eq([s.normalizePreferences({}).audioDelayMs, s.normalizePreferences({}).subtitleDelayMs], [0, 0], 'no default delays at first');
+eq(s.normalizePreferences({ audioDelayMs: 150.4, subtitleDelayMs: -1250 }).audioDelayMs, 150, 'saved audio delay kept (whole ms)');
+eq(s.normalizePreferences({ audioDelayMs: 99999, subtitleDelayMs: -99999 }).subtitleDelayMs, -60000, 'subtitle delay clamped');
+eq(s.clampDelay(99999, s.AUDIO_DELAY_RANGE), 5000, 'audio delay clamped');
+eq(s.clampDelay('x', s.AUDIO_DELAY_RANGE), 0, 'bad delay → 0');
 eq(s.formatDelay(150), '+150 ms', 'delay +150 ms');
 eq(s.formatDelay(-1250), '−1.25 s', 'delay −1.25 s');
 eq(s.formatDelay(-1000), '−1 s', 'delay −1 s');

@@ -31,6 +31,10 @@ export type Preferences = {
   /** Swipe up/down on the right half for volume. */
   gestureVolume: boolean;
   subtitleStyle: SubtitleStyle;
+  /** Audio delay every video starts with (ms; + = sound later). */
+  audioDelayMs: number;
+  /** Subtitle delay every video starts with (ms; + = subtitles later). */
+  subtitleDelayMs: number;
 };
 
 export const DefaultSubtitleStyle: SubtitleStyle = {
@@ -61,6 +65,8 @@ export const DefaultPreferences: Preferences = {
   gestureBrightness: true,
   gestureVolume: true,
   subtitleStyle: DefaultSubtitleStyle,
+  audioDelayMs: 0,
+  subtitleDelayMs: 0,
 };
 
 const oneOf = <T extends string>(value: unknown, options: readonly T[], fallback: T): T =>
@@ -94,6 +100,15 @@ export function normalizeSubtitleStyle(saved: unknown): SubtitleStyle {
 
 /** Steps for audio/subtitle delay buttons and keys (ms), like VLC. */
 export const DELAY_STEP_MS = 50;
+export const AUDIO_DELAY_RANGE = { min: -5000, max: 5000 } as const;
+export const SUBTITLE_DELAY_RANGE = { min: -60000, max: 60000 } as const;
+/** The browser can only hold the picture back so far, so sound can't come more than 0.5 s early there. */
+export const WEB_MIN_AUDIO_DELAY_MS = -500;
+
+/** A delay rounded to whole ms and kept in range (non-numbers → 0). */
+export function clampDelay(ms: unknown, range: { min: number; max: number }): number {
+  return typeof ms === 'number' && Number.isFinite(ms) ? Math.min(range.max, Math.max(range.min, Math.round(ms))) : 0;
+}
 
 /** "+150 ms", "−1.25 s", "0 ms". */
 export function formatDelay(ms: number): string {
@@ -122,5 +137,7 @@ export function normalizePreferences(saved: unknown): Preferences {
     gestureBrightness: bool(s.gestureBrightness, d.gestureBrightness),
     gestureVolume: bool(s.gestureVolume, d.gestureVolume),
     subtitleStyle: normalizeSubtitleStyle(s.subtitleStyle),
+    audioDelayMs: clampDelay(s.audioDelayMs, AUDIO_DELAY_RANGE),
+    subtitleDelayMs: clampDelay(s.subtitleDelayMs, SUBTITLE_DELAY_RANGE),
   };
 }

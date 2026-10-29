@@ -1,13 +1,14 @@
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import { StyleSheet, Switch, View } from 'react-native';
 
+import { DelayRow } from '@/components/delay-row';
 import { Segmented } from '@/components/segmented';
 import { Sheet, SheetOption } from '@/components/sheet';
 import { ThemedText } from '@/components/themed-text';
 import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFps } from '@/lib/format';
-import { DELAY_STEP_MS, formatDelay, type AnalysisQuality, type SmoothingMode, type SubtitleStyle } from '@/lib/settings-schema';
+import { AUDIO_DELAY_RANGE, formatDelay, SUBTITLE_DELAY_RANGE, type AnalysisQuality, type SmoothingMode, type SubtitleStyle } from '@/lib/settings-schema';
 import type { Track, TracksEvent } from 'glide-engine';
 
 function ToggleRow({ label, detail, value, onChange }: { label: string; detail?: string; value: boolean; onChange: (v: boolean) => void }) {
@@ -100,44 +101,6 @@ export function SmoothingSheet(p: {
   );
 }
 
-/** VLC-style delay stepper: − big, − small, value (tap to reset), + small, + big. */
-function DelayRow({ label, detail, value, big, min, max, onChange }: { label: string; detail: string; value: number; big: number; min: number; max: number; onChange: (ms: number) => void }) {
-  const theme = useTheme();
-  const step = (d: number) => onChange(Math.min(max, Math.max(min, value + d)));
-  const btn = (d: number) => (
-    <Pressable
-      key={d}
-      onPress={() => step(d)}
-      accessibilityRole="button"
-      accessibilityLabel={`${label} ${d > 0 ? 'plus' : 'minus'} ${formatDelay(Math.abs(d)).slice(1)}`}
-      style={({ pressed }) => [styles.step, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
-      <ThemedText type="smallBold">{(d > 0 ? '+' : '−') + formatDelay(Math.abs(d)).slice(1)}</ThemedText>
-    </Pressable>
-  );
-  return (
-    <View style={{ gap: Spacing.one, marginTop: Spacing.one }}>
-      <ThemedText>{label}</ThemedText>
-      <View style={styles.delayRow}>
-        {btn(-big)}
-        {btn(-DELAY_STEP_MS)}
-        <Pressable onPress={() => onChange(0)} accessibilityRole="button" accessibilityLabel={`${label} ${formatDelay(value)}, tap to reset`} style={styles.delayValue}>
-          <ThemedText type="smallBold" font="mono" style={{ color: value === 0 ? theme.textSecondary : theme.accentText }}>
-            {formatDelay(value)}
-          </ThemedText>
-        </Pressable>
-        {btn(DELAY_STEP_MS)}
-        {btn(big)}
-      </View>
-      <ThemedText type="caption" themeColor="textSecondary">
-        {detail}
-      </ThemedText>
-    </View>
-  );
-}
-
-export const AUDIO_DELAY_RANGE = { min: -5000, max: 5000 };
-export const SUBTITLE_DELAY_RANGE = { min: -60000, max: 60000 };
-
 export function TracksSheet(p: {
   visible: boolean;
   onClose: () => void;
@@ -151,8 +114,15 @@ export function TracksSheet(p: {
   onSubtitleDelay: (ms: number) => void;
   onSubtitleStyle: () => void;
   minAudioDelayMs?: number;
+  /** The defaults from Settings (where tapping a value goes back to). */
+  defaultAudioDelayMs: number;
+  defaultSubtitleDelayMs: number;
+  /** Saves the current delays as the defaults for every video. */
+  onSaveDefaultDelays: () => void;
 }) {
   const textOn = p.tracks.text.some((t) => t.selected);
+  const differs = p.audioDelayMs !== p.defaultAudioDelayMs || p.subtitleDelayMs !== p.defaultSubtitleDelayMs;
+  const defaultsNote = `Current default: audio ${formatDelay(p.defaultAudioDelayMs)}, subtitles ${formatDelay(p.defaultSubtitleDelayMs)}.`;
   return (
     <Sheet visible={p.visible} title="Audio & subtitles" onClose={p.onClose}>
       <ThemedText type="label" themeColor="textSecondary">
@@ -165,11 +135,12 @@ export function TracksSheet(p: {
       )}
       <DelayRow
         label="Audio delay"
-        detail="Plus: sound comes later. Minus: sound comes earlier. Tap the number to reset."
+        detail="Plus: sound comes later. Minus: sound comes earlier. Tap the number to go back to your default."
         value={p.audioDelayMs}
         big={500}
         min={p.minAudioDelayMs ?? AUDIO_DELAY_RANGE.min}
         max={AUDIO_DELAY_RANGE.max}
+        resetTo={p.defaultAudioDelayMs}
         onChange={p.onAudioDelay}
       />
       <ThemedText type="label" themeColor="textSecondary" style={styles.label}>
@@ -187,8 +158,16 @@ export function TracksSheet(p: {
         big={1000}
         min={SUBTITLE_DELAY_RANGE.min}
         max={SUBTITLE_DELAY_RANGE.max}
+        resetTo={p.defaultSubtitleDelayMs}
         onChange={p.onSubtitleDelay}
       />
+      {differs ? (
+        <SheetOption label="Use these delays for all videos" detail={defaultsNote} onPress={p.onSaveDefaultDelays} />
+      ) : (
+        <ThemedText type="caption" themeColor="textSecondary">
+          {defaultsNote} Change them here or in Settings.
+        </ThemedText>
+      )}
       <SheetOption label="Subtitle style…" detail="Size, font, colour, background, outline, position" onPress={p.onSubtitleStyle} />
     </Sheet>
   );
@@ -222,8 +201,5 @@ export function SpeedSheet({ visible, onClose, rate, onRate }: { visible: boolea
 
 const styles = StyleSheet.create({
   label: { marginTop: Spacing.two },
-  delayRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  delayValue: { flex: 1, alignItems: 'center', paddingVertical: Spacing.two },
-  step: { paddingHorizontal: Spacing.two, paddingVertical: Spacing.two, borderRadius: Radius.button, minWidth: 56, alignItems: 'center' },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.one, marginTop: Spacing.one },
 });

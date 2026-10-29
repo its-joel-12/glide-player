@@ -26,7 +26,7 @@ import { Icon } from '@/components/icon';
 import { PlayerControls } from '@/components/player/controls';
 import { GestureLayer } from '@/components/player/gesture-layer';
 import { HudPill, type Hud } from '@/components/player/hud';
-import { AUDIO_DELAY_RANGE, SmoothingSheet, SpeedSheet, SUBTITLE_DELAY_RANGE, SubtitleStyleSheet, TracksSheet } from '@/components/player/sheets';
+import { SmoothingSheet, SpeedSheet, SubtitleStyleSheet, TracksSheet } from '@/components/player/sheets';
 import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
 import { formatFps, formatOffset, formatTime } from '@/lib/format';
@@ -34,12 +34,11 @@ import { clamp } from '@/lib/gestures';
 import { pickSubtitleFile } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResume, getResume, saveResume, startPosition } from '@/lib/resume';
-import { DELAY_STEP_MS, formatDelay, type SmoothingMode } from '@/lib/settings-schema';
+import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS, type SmoothingMode } from '@/lib/settings-schema';
 
 type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | null;
 const isWeb = Platform.OS === 'web';
-/** The browser can only hold the picture back so far, so sound can't come more than 0.5 s early there. */
-const MIN_AUDIO_DELAY_MS = isWeb ? -500 : AUDIO_DELAY_RANGE.min;
+const MIN_AUDIO_DELAY_MS = isWeb ? WEB_MIN_AUDIO_DELAY_MS : AUDIO_DELAY_RANGE.min;
 
 /** Back to the previous screen, or home when the player was opened directly (web refresh / link). */
 const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
@@ -86,9 +85,9 @@ export default function PlayerScreen() {
   const [tracks, setTracks] = useState<TracksEvent>({ audio: [], text: [] });
   const [info, setInfo] = useState<LoadEvent | null>(null);
   const [stats, setStats] = useState<StatsEvent | null>(null);
-  // Audio/subtitle sync for this video only (like VLC), so a fix for one file doesn't break the next.
-  const [audioDelayMs, setAudioDelayMs] = useState(0);
-  const [subtitleDelayMs, setSubtitleDelayMs] = useState(0);
+  // Audio/subtitle sync: each video starts from the defaults in Settings; changes here are for this video only.
+  const [audioDelayMs, setAudioDelayMs] = useState(() => Math.max(MIN_AUDIO_DELAY_MS, prefs.audioDelayMs));
+  const [subtitleDelayMs, setSubtitleDelayMs] = useState(prefs.subtitleDelayMs);
   const [landscape, setLandscape] = useState<boolean | null>(() => {
     const w = Number(params.w);
     const h = Number(params.h);
@@ -219,6 +218,11 @@ export default function PlayerScreen() {
     const v = clamp(Math.round(ms), SUBTITLE_DELAY_RANGE.min, SUBTITLE_DELAY_RANGE.max);
     setSubtitleDelayMs(v);
     flashHud({ kind: 'text', label: `Subtitle delay ${formatDelay(v)}` }, 1000);
+  };
+  const saveDefaultDelays = () => {
+    setPreference('audioDelayMs', audioDelayMs);
+    setPreference('subtitleDelayMs', subtitleDelayMs);
+    showToast(`Every video now starts with audio ${formatDelay(audioDelayMs)}, subtitles ${formatDelay(subtitleDelayMs)}.`);
   };
   const toggleStats = () => {
     setPreference('showStats', !prefs.showStats);
@@ -554,6 +558,9 @@ export default function PlayerScreen() {
         subtitleDelayMs={subtitleDelayMs}
         onSubtitleDelay={changeSubtitleDelay}
         onSubtitleStyle={() => setSheet('subtitleStyle')}
+        defaultAudioDelayMs={Math.max(MIN_AUDIO_DELAY_MS, prefs.audioDelayMs)}
+        defaultSubtitleDelayMs={prefs.subtitleDelayMs}
+        onSaveDefaultDelays={saveDefaultDelays}
       />
       <SubtitleStyleSheet
         visible={sheet === 'subtitleStyle'}
