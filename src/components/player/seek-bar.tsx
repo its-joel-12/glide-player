@@ -14,27 +14,49 @@ type Props = {
   onScrubEnd: (ms: number) => void;
 };
 
-/** Seek bar with a big touch area: tap or drag anywhere on it. */
+/** The time under the finger for the current touch (held outside React state so the end handler sees it). */
+class Scrub {
+  private ms: number | null = null;
+  set(ms: number) {
+    this.ms = ms;
+  }
+  /** The pending time, cleared so it is used once. */
+  take(): number | null {
+    const ms = this.ms;
+    this.ms = null;
+    return ms;
+  }
+}
+
+/**
+ * Seek bar with a big touch area: tap or drag anywhere on it.
+ *
+ * A quick tap never "activates" a pan (that needs movement), so `onEnd` doesn't run for it.
+ * The seek is therefore committed in `onFinalize`, which runs for every touch.
+ */
 export function SeekBar({ positionMs, durationMs, bufferedMs, onScrub, onScrubEnd }: Props) {
   const [width, setWidth] = useState(1);
   const [dragMs, setDragMs] = useState<number | null>(null);
+  const [scrub] = useState(() => new Scrub());
   const toMs = (x: number) => clamp(x / width, 0, 1) * durationMs;
+  const move = (x: number) => {
+    const ms = toMs(x);
+    scrub.set(ms);
+    setDragMs(ms);
+    onScrub(ms);
+  };
 
   const pan = Gesture.Pan()
     .runOnJS(true)
     .minDistance(0)
-    .onBegin((e) => {
-      const ms = toMs(e.x);
-      setDragMs(ms);
-      onScrub(ms);
-    })
-    .onUpdate((e) => {
-      const ms = toMs(e.x);
-      setDragMs(ms);
-      onScrub(ms);
-    })
-    .onEnd((e) => onScrubEnd(toMs(e.x)))
-    .onFinalize(() => setDragMs(null));
+    .shouldCancelWhenOutside(false)
+    .onBegin((e) => move(e.x))
+    .onUpdate((e) => move(e.x))
+    .onFinalize(() => {
+      const ms = scrub.take();
+      setDragMs(null);
+      if (ms != null) onScrubEnd(ms);
+    });
 
   const shown = dragMs ?? positionMs;
   const f = durationMs > 0 ? clamp(shown / durationMs, 0, 1) : 0;
