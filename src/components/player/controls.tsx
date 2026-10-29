@@ -7,7 +7,7 @@ import { SeekBar } from '@/components/player/seek-bar';
 import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
 import { formatTime } from '@/lib/format';
-import type { SmoothingMode } from '@/lib/settings-schema';
+import { formatDelay, type SmoothingMode } from '@/lib/settings-schema';
 
 type IconName = { ios: SFSymbol; md: AndroidSymbol };
 
@@ -44,6 +44,9 @@ export type ControlsProps = {
   seekStep: number;
   /** "24 → 120 fps", shown under the mode chip */
   rateLabel: string;
+  /** Current audio and subtitle delay (ms); shown as a badge when not zero. */
+  audioDelayMs: number;
+  subtitleDelayMs: number;
   onBack: () => void;
   onPlayPause: () => void;
   onSeekBy: (ms: number) => void;
@@ -63,6 +66,26 @@ export type ControlsProps = {
   /** Android: picture-in-picture. */
   onPip?: () => void;
 };
+
+/** "Audio +150 ms · Subs −1 s" when a delay is set; tap to adjust. */
+function DelayBadge({ audioMs, subtitleMs, onPress }: { audioMs: number; subtitleMs: number; onPress: () => void }) {
+  const parts = [audioMs ? `Audio ${formatDelay(audioMs)}` : '', subtitleMs ? `Subs ${formatDelay(subtitleMs)}` : ''].filter(Boolean);
+  if (!parts.length) return <View style={{ flex: 1 }} />;
+  return (
+    <View style={{ flex: 1, alignItems: 'flex-start' }}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={`Delay: ${parts.join(', ')}. Opens audio and subtitles.`}
+        style={({ pressed }) => [styles.delay, pressed && { opacity: 0.7 }]}>
+        <Icon ios="timer" md="av_timer" size={15} color={Screen.accent} />
+        <ThemedText font="mono" color={Screen.text} style={{ fontSize: 12 }} numberOfLines={1}>
+          {parts.join(' · ')}
+        </ThemedText>
+      </Pressable>
+    </View>
+  );
+}
 
 export function PlayerControls(p: ControlsProps) {
   const pad = { paddingLeft: p.insets.left + 8, paddingRight: p.insets.right + 8 };
@@ -123,6 +146,7 @@ export function PlayerControls(p: ControlsProps) {
               {formatTime(p.durationMs)}
             </ThemedText>
           </ThemedText>
+          <DelayBadge audioMs={p.audioDelayMs} subtitleMs={p.subtitleDelayMs} onPress={p.onOpenTracks} />
           <View style={styles.rowRight}>
             <Pressable onPress={p.onOpenSpeed} accessibilityRole="button" accessibilityLabel={`Speed ${p.rate}×`} style={styles.speed}>
               <ThemedText font="mono" color={p.rate !== 1 ? Screen.accent : Screen.text} style={{ fontSize: 13 }}>
@@ -156,6 +180,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   time: { fontSize: 13 },
+  delay: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: Screen.track, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
   speed: { paddingHorizontal: 10, paddingVertical: 8 },
   btn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   btnActive: { backgroundColor: 'rgba(240,162,74,0.18)' },

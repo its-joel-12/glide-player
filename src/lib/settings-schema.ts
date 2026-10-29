@@ -26,6 +26,10 @@ export type Preferences = {
   seekStep: number;
   /** Turn the phone sideways for wide videos. */
   autoRotate: boolean;
+  /** Swipe up/down on the left half for brightness (web: volume). */
+  gestureBrightness: boolean;
+  /** Swipe up/down on the right half for volume. */
+  gestureVolume: boolean;
   subtitleStyle: SubtitleStyle;
 };
 
@@ -54,6 +58,8 @@ export const DefaultPreferences: Preferences = {
   resume: true,
   seekStep: 10,
   autoRotate: true,
+  gestureBrightness: true,
+  gestureVolume: true,
   subtitleStyle: DefaultSubtitleStyle,
 };
 
@@ -113,6 +119,8 @@ export function normalizePreferences(saved: unknown): Preferences {
     resume: bool(s.resume, d.resume),
     seekStep: (SeekStepOptions as readonly number[]).includes(s.seekStep as number) ? (s.seekStep as number) : d.seekStep,
     autoRotate: bool(s.autoRotate, d.autoRotate),
+    gestureBrightness: bool(s.gestureBrightness, d.gestureBrightness),
+    gestureVolume: bool(s.gestureVolume, d.gestureVolume),
     subtitleStyle: normalizeSubtitleStyle(s.subtitleStyle),
   };
 }

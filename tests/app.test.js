@@ -121,6 +121,9 @@ const ss = s.normalizeSubtitleStyle({ scale: 9, font: 'comic', color: '#ff0000',
 eq([ss.scale, ss.font, ss.color, ss.background, ss.backgroundOpacity, ss.position], [2.5, 'sans', '#FF0000', 'band', 0, 0.08], 'subtitle style clamps and fills defaults');
 eq(s.normalizeSubtitleStyle(null), s.DefaultSubtitleStyle, 'missing subtitle style → defaults');
 eq(s.normalizePreferences({}).subtitleStyle, s.DefaultSubtitleStyle, 'old saved settings get a subtitle style');
+eq([s.normalizePreferences({}).gestureBrightness, s.normalizePreferences({}).gestureVolume], [true, true], 'swipe gestures on by default');
+eq(s.normalizePreferences({ gestureBrightness: false, gestureVolume: 'no' }).gestureBrightness, false, 'brightness swipe can be turned off');
+eq(s.normalizePreferences({ gestureVolume: 'no' }).gestureVolume, true, 'bad saved value → default');
 eq(s.formatDelay(150), '+150 ms', 'delay +150 ms');
 eq(s.formatDelay(-1250), '−1.25 s', 'delay −1.25 s');
 eq(s.formatDelay(-1000), '−1 s', 'delay −1 s');

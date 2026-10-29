@@ -34,6 +34,9 @@ type Props = {
   getVolume: () => number;
   onVolume: (value: number, done: boolean) => void;
   onResize: (mode: 'fit' | 'fill' | 'zoom') => void;
+  /** Vertical swipes on the left / right half (off = the swipe does nothing). */
+  brightnessEnabled?: boolean;
+  volumeEnabled?: boolean;
 };
 
 /**
@@ -59,8 +62,8 @@ export function GestureLayer(p: Props) {
         swipe.begin('seek');
       } else {
         const side = sideOf(e.x, p.width);
-        if (side === 'left') swipe.begin('brightness', p.getBrightness());
-        else if (side === 'right') swipe.begin('volume', p.getVolume());
+        if (side === 'left' && p.brightnessEnabled !== false) swipe.begin('brightness', p.getBrightness());
+        else if (side === 'right' && p.volumeEnabled !== false) swipe.begin('volume', p.getVolume());
         else swipe.begin('none');
       }
     })

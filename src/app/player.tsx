@@ -373,6 +373,9 @@ export default function PlayerScreen() {
                 height={height}
                 durationMs={pos.durationMs}
                 resizeMode={resizeMode}
+                // On the web both sides control volume (browsers can't set screen brightness).
+                brightnessEnabled={isWeb ? prefs.gestureVolume : prefs.gestureBrightness}
+                volumeEnabled={prefs.gestureVolume}
                 onTap={() => (showControls ? setControls(false) : poke())}
                 onDoubleTap={(side) => (side === 'center' ? playPause() : seekBy((side === 'left' ? -1 : 1) * prefs.seekStep * 1000))}
                 onSeekSwipe={(offset, done) => {
@@ -428,6 +431,8 @@ export default function PlayerScreen() {
                   resizeMode={resizeMode}
                   seekStep={prefs.seekStep}
                   rateLabel={smoothingAvailable ? rateLabel : ''}
+                  audioDelayMs={audioDelayMs}
+                  subtitleDelayMs={subtitleDelayMs}
                   onBack={goBack}
                   onPlayPause={() => {
                     playPause();

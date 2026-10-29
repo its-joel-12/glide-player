@@ -49,3 +49,6 @@ Claude outputs/
 builds/
 credentials.json
 credentials/
+
+# native module build output
+modules/*/android/build/

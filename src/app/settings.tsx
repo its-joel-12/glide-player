@@ -125,6 +125,19 @@ export default function SettingsScreen() {
               />
             </>
           )}
+          {isWeb ? (
+            <Toggle label="Swipe up/down for volume" detail="On phones and tablets." value={prefs.gestureVolume} onChange={(v) => setPreference('gestureVolume', v)} />
+          ) : (
+            <>
+              <Toggle
+                label="Swipe for brightness"
+                detail="Up/down on the left half of the video."
+                value={prefs.gestureBrightness}
+                onChange={(v) => setPreference('gestureBrightness', v)}
+              />
+              <Toggle label="Swipe for volume" detail="Up/down on the right half of the video." value={prefs.gestureVolume} onChange={(v) => setPreference('gestureVolume', v)} />
+            </>
+          )}
           <Field label="Double-tap to skip">
             <Segmented options={SeekStepOptions.map((s) => ({ value: s, label: `${s} s` }))} value={prefs.seekStep} onChange={(v) => setPreference('seekStep', v)} dense />
           </Field>

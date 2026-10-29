@@ -24,10 +24,10 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
 - **Player essentials:** swipe sideways to seek, up/down on the left for brightness and on the right
   for volume, double-tap to skip, pinch to fill the screen; subtitles (built-in tracks or .srt/.vtt/.ass
   files), audio track choice, speed, picture-in-picture, background sound with lock-screen controls,
-  lock controls, rotate.
+  lock controls, rotate. The brightness and volume swipes can each be turned off in Settings.
 - **Audio and subtitle delay (like VLC):** in *Audio & subtitles*, nudge the sound or the subtitles
   earlier or later in 50 ms steps (or 0.5 s / 1 s jumps); tap the value to reset. Delays apply to
-  the current video only.
+  the current video only, and a badge next to the time shows them while the controls are up.
 - **Subtitle style:** size, font (sans, serif, mono, narrow, casual), bold, text colour, background
   (none, box or band, with colour and opacity), outline/shadow and its colour, height on screen, and
   whether to keep the styles inside .ass files. Set it in Settings or from the player, with a live preview.
