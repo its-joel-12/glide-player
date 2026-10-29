@@ -8,7 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -24,6 +24,7 @@ import expo.modules.glide.memc.MemcStats
 internal object PlayerHolder {
   val settings = MemcSettings()
   val stats = MemcStats()
+  val timing = PlaybackTiming()
 
   private var player: ExoPlayer? = null
   var session: MediaSession? = null
@@ -63,7 +64,7 @@ internal object PlayerHolder {
   }
 
   private fun build(app: Context, withEffects: Boolean): ExoPlayer {
-    val renderers = DefaultRenderersFactory(app).setEnableDecoderFallback(true)
+    val renderers = GlideRenderersFactory(app, timing)
     val p = ExoPlayer.Builder(app, renderers)
       .setAudioAttributes(
         AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
@@ -76,6 +77,13 @@ internal object PlayerHolder {
       .setSeekForwardIncrementMs(10_000)
       .build()
     if (withEffects) p.setVideoEffects(listOf<Effect>(MemcEffect(settings, stats, isExport = false)))
+    // Count what really reaches the screen, for the frame-rate readout.
+    p.setVideoFrameMetadataListener { _, _, _, _ -> timing.renderedFrames.incrementAndGet() }
+    p.addAnalyticsListener(object : AnalyticsListener {
+      override fun onDroppedVideoFrames(eventTime: AnalyticsListener.EventTime, droppedFrames: Int, elapsedMs: Long) {
+        timing.droppedFrames.addAndGet(droppedFrames.toLong())
+      }
+    })
     return p
   }
 

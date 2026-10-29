@@ -1,12 +1,13 @@
-import { StyleSheet, Switch, View } from 'react-native';
+import { Pressable, StyleSheet, Switch, View } from 'react-native';
 
 import { Segmented } from '@/components/segmented';
 import { Sheet, SheetOption } from '@/components/sheet';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFps } from '@/lib/format';
-import type { AnalysisQuality, SmoothingMode } from '@/lib/settings-schema';
+import { DELAY_STEP_MS, formatDelay, type AnalysisQuality, type SmoothingMode, type SubtitleStyle } from '@/lib/settings-schema';
 import type { Track, TracksEvent } from 'glide-engine';
 
 function ToggleRow({ label, detail, value, onChange }: { label: string; detail?: string; value: boolean; onChange: (v: boolean) => void }) {
@@ -42,6 +43,8 @@ export function SmoothingSheet(p: {
   quality: AnalysisQuality;
   onQuality: (q: AnalysisQuality) => void;
   sourceFps: number;
+  showStats: boolean;
+  onShowStats: (v: boolean) => void;
 }) {
   const maxHz = Math.max(60, ...p.refreshRates);
   const fpsOptions = [0, ...[60, 90, 120, 144].filter((r) => r <= maxHz + 1)].map((v) => ({ value: v, label: v === 0 ? `Auto` : String(v) }));
@@ -90,11 +93,50 @@ export function SmoothingSheet(p: {
         dense
       />
 
+      <ToggleRow label="Show frame rates" detail="Video fps, frames reaching the screen, made-up and dropped frames." value={p.showStats} onChange={p.onShowStats} />
       <ToggleRow label="Split compare" detail="Left: original. Right: smoothed. Drag the line." value={p.compare} onChange={p.onCompare} />
       <ToggleRow label="Show motion vectors" detail="Colour is direction, strength is speed." value={p.vectors} onChange={p.onVectors} />
     </Sheet>
   );
 }
+
+/** VLC-style delay stepper: − big, − small, value (tap to reset), + small, + big. */
+function DelayRow({ label, detail, value, big, min, max, onChange }: { label: string; detail: string; value: number; big: number; min: number; max: number; onChange: (ms: number) => void }) {
+  const theme = useTheme();
+  const step = (d: number) => onChange(Math.min(max, Math.max(min, value + d)));
+  const btn = (d: number) => (
+    <Pressable
+      key={d}
+      onPress={() => step(d)}
+      accessibilityRole="button"
+      accessibilityLabel={`${label} ${d > 0 ? 'plus' : 'minus'} ${formatDelay(Math.abs(d)).slice(1)}`}
+      style={({ pressed }) => [styles.step, { backgroundColor: theme.backgroundElement, opacity: pressed ? 0.7 : 1 }]}>
+      <ThemedText type="smallBold">{(d > 0 ? '+' : '−') + formatDelay(Math.abs(d)).slice(1)}</ThemedText>
+    </Pressable>
+  );
+  return (
+    <View style={{ gap: Spacing.one, marginTop: Spacing.one }}>
+      <ThemedText>{label}</ThemedText>
+      <View style={styles.delayRow}>
+        {btn(-big)}
+        {btn(-DELAY_STEP_MS)}
+        <Pressable onPress={() => onChange(0)} accessibilityRole="button" accessibilityLabel={`${label} ${formatDelay(value)}, tap to reset`} style={styles.delayValue}>
+          <ThemedText type="smallBold" font="mono" style={{ color: value === 0 ? theme.textSecondary : theme.accentText }}>
+            {formatDelay(value)}
+          </ThemedText>
+        </Pressable>
+        {btn(DELAY_STEP_MS)}
+        {btn(big)}
+      </View>
+      <ThemedText type="caption" themeColor="textSecondary">
+        {detail}
+      </ThemedText>
+    </View>
+  );
+}
+
+export const AUDIO_DELAY_RANGE = { min: -5000, max: 5000 };
+export const SUBTITLE_DELAY_RANGE = { min: -60000, max: 60000 };
 
 export function TracksSheet(p: {
   visible: boolean;
@@ -103,6 +145,12 @@ export function TracksSheet(p: {
   onAudio: (t: Track | null) => void;
   onText: (t: Track | null) => void;
   onLoadSubtitles: () => void;
+  audioDelayMs: number;
+  onAudioDelay: (ms: number) => void;
+  subtitleDelayMs: number;
+  onSubtitleDelay: (ms: number) => void;
+  onSubtitleStyle: () => void;
+  minAudioDelayMs?: number;
 }) {
   const textOn = p.tracks.text.some((t) => t.selected);
   return (
@@ -115,6 +163,15 @@ export function TracksSheet(p: {
       ) : (
         <ThemedText themeColor="textSecondary">No audio tracks.</ThemedText>
       )}
+      <DelayRow
+        label="Audio delay"
+        detail="Plus: sound comes later. Minus: sound comes earlier. Tap the number to reset."
+        value={p.audioDelayMs}
+        big={500}
+        min={p.minAudioDelayMs ?? AUDIO_DELAY_RANGE.min}
+        max={AUDIO_DELAY_RANGE.max}
+        onChange={p.onAudioDelay}
+      />
       <ThemedText type="label" themeColor="textSecondary" style={styles.label}>
         Subtitles
       </ThemedText>
@@ -123,6 +180,24 @@ export function TracksSheet(p: {
         <SheetOption key={t.id} label={t.label} selected={t.selected} onPress={() => p.onText(t)} />
       ))}
       <SheetOption label="Load a subtitle file…" detail=".srt, .vtt, .ass" onPress={p.onLoadSubtitles} />
+      <DelayRow
+        label="Subtitle delay"
+        detail="Plus: subtitles appear later. Minus: earlier."
+        value={p.subtitleDelayMs}
+        big={1000}
+        min={SUBTITLE_DELAY_RANGE.min}
+        max={SUBTITLE_DELAY_RANGE.max}
+        onChange={p.onSubtitleDelay}
+      />
+      <SheetOption label="Subtitle style…" detail="Size, font, colour, background, outline, position" onPress={p.onSubtitleStyle} />
+    </Sheet>
+  );
+}
+
+export function SubtitleStyleSheet({ visible, onClose, value, onChange }: { visible: boolean; onClose: () => void; value: SubtitleStyle; onChange: (s: SubtitleStyle) => void }) {
+  return (
+    <Sheet visible={visible} title="Subtitle style" onClose={onClose}>
+      <SubtitleStyleEditor value={value} onChange={onChange} />
     </Sheet>
   );
 }
@@ -147,5 +222,8 @@ export function SpeedSheet({ visible, onClose, rate, onRate }: { visible: boolea
 
 const styles = StyleSheet.create({
   label: { marginTop: Spacing.two },
+  delayRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  delayValue: { flex: 1, alignItems: 'center', paddingVertical: Spacing.two },
+  step: { paddingHorizontal: Spacing.two, paddingVertical: Spacing.two, borderRadius: Radius.button, minWidth: 56, alignItems: 'center' },
   toggle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.one, marginTop: Spacing.one },
 });

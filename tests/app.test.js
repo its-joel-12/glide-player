@@ -104,6 +104,35 @@ eq(ass, [{ start: 1, end: 2, text: 'Bold, yes\nline two' }], 'parse ass (commas,
 eq(sub.cueAt(srt, 1.2), 'Hello\nthere', 'cue at 1.2');
 eq(sub.cueAt(srt, 2.7), '', 'no cue between');
 
+// video grid helpers (the library list)
+const grid = require('../src/lib/grid.ts');
+const vids = (...ids) => ids.map((id) => ({ id }));
+eq(grid.mergeUnique(vids('a', 'b'), vids('b', 'c')).map((v) => v.id), ['a', 'b', 'c'], 'merge skips duplicates');
+eq(grid.mergeUnique([], vids('a', 'a')).map((v) => v.id), ['a'], 'merge dedupes inside a page');
+eq(grid.toRows([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]], 'rows of 2');
+eq(grid.toRows([], 3), [], 'no rows');
+eq(grid.toRows([1, 2], 0), [[1], [2]], 'zero columns → 1');
+eq(grid.columnsFor(360), 2, 'phone: 2 columns');
+eq(grid.columnsFor(1200), 6, 'wide: 6 columns');
+eq(grid.columnsFor(100), 2, 'never below 2');
+
+// subtitle style + delays
+const ss = s.normalizeSubtitleStyle({ scale: 9, font: 'comic', color: '#ff0000', background: 'band', backgroundOpacity: -1, position: 'x' });
+eq([ss.scale, ss.font, ss.color, ss.background, ss.backgroundOpacity, ss.position], [2.5, 'sans', '#FF0000', 'band', 0, 0.08], 'subtitle style clamps and fills defaults');
+eq(s.normalizeSubtitleStyle(null), s.DefaultSubtitleStyle, 'missing subtitle style → defaults');
+eq(s.normalizePreferences({}).subtitleStyle, s.DefaultSubtitleStyle, 'old saved settings get a subtitle style');
+eq(s.formatDelay(150), '+150 ms', 'delay +150 ms');
+eq(s.formatDelay(-1250), '−1.25 s', 'delay −1.25 s');
+eq(s.formatDelay(-1000), '−1 s', 'delay −1 s');
+eq(s.formatDelay(2500), '+2.5 s', 'delay +2.5 s');
+eq(s.formatDelay(0.2), '0 ms', 'delay 0');
+const subCss = require('../modules/glide-engine/src/web/subtitle-style.ts');
+eq(subCss.rgba('#FF8000', 0.5), 'rgba(255, 128, 0, 0.5)', 'rgba');
+const css = subCss.subtitleCss({ ...subCss.DEFAULT_SUBTITLE_STYLE, background: 'box', backgroundOpacity: 1, scale: 1.3, position: 0.16 });
+eq([css.box.bottom, css.text.background], ['16%', 'rgba(0, 0, 0, 1)'], 'box background + position');
+eq(css.box.fontSize.includes('1.3'), true, 'size scales the font');
+eq(subCss.subtitleCss({ ...subCss.DEFAULT_SUBTITLE_STYLE, edge: 'none' }).text.textShadow, 'none', 'no edge → no shadow');
+
 // the web engine uses the same shaders as the Android engine
 const fs = require('fs');
 const kt = fs.readFileSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/java/expo/modules/glide/memc/Shaders.kt'), 'utf8');

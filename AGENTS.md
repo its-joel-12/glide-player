@@ -50,6 +50,8 @@ Docs: https://docs.expo.dev/eas/index.md
   - `GlidePlayerView` — the native view (ExoPlayer surface, subtitles, tracks, picture-in-picture, refresh rate). `PlayerHolder` — the one shared player + media session. `SmoothExporter` — Transformer export to Movies/Glide.
   - `plugins/with-glide-activity.js` — manifest flags for picture-in-picture.
 - **Keep TS and Kotlin in step:** frame timing lives in `MemcShaderProgram.scheduleInBetween` (Kotlin) and is mirrored in `src/lib/cadence.ts` (TypeScript, tested). Change both together.
+- **Audio/subtitle delay:** Media3 has no offset API, so `Timing.kt` wraps the video and text renderers (`ShiftedRenderer`, via `GlideRenderersFactory`) and asks them for a shifted position; audio drives the clock, so audio delay moves the picture. The web version holds the picture back and delays the sound with a WebAudio `DelayNode` (`src/web/core.ts`).
+- **Subtitle style** is one `SubtitleStyle` object (types file) applied with `CaptionStyleCompat` on Android and `src/web/subtitle-style.ts` on the web.
 - Media3 classes used here are `@UnstableApi`; annotate new Kotlin classes with `@OptIn(UnstableApi::class)`.
 - Native changes need a new development build (`npm run build:dev`, or `npm run build:apk:local`); JS changes reload live with `npm run usb`.
 - Before declaring work done: `npm run typecheck`, `npm run lint`, `npm test`.

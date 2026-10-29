@@ -20,6 +20,27 @@ class SourceRecord : Record {
   @Field val subtitles: List<SubtitleRecord> = emptyList()
 }
 
+/** How subtitles look (see SubtitleStyle in GlideEngine.types.ts). */
+class SubtitleStyleRecord : Record {
+  /** 1 = normal size. */
+  @Field val scale: Double = 1.0
+  /** "sans", "serif", "mono", "condensed" or "casual". */
+  @Field val font: String = "sans"
+  @Field val bold: Boolean = false
+  @Field val color: String = "#FFFFFF"
+  /** "none", "box" (behind the text) or "band" (full-width strip). */
+  @Field val background: String = "none"
+  @Field val backgroundColor: String = "#000000"
+  @Field val backgroundOpacity: Double = 0.5
+  /** "none", "outline", "shadow", "raised" or "depressed". */
+  @Field val edge: String = "outline"
+  @Field val edgeColor: String = "#000000"
+  /** Distance from the bottom, as a fraction of the picture height. */
+  @Field val position: Double = 0.08
+  /** Use colours, fonts and sizes from the subtitle file (ASS, embedded tracks). */
+  @Field val useFileStyles: Boolean = true
+}
+
 class ExportOptions : Record {
   @Field val uri: String = ""
   @Field val title: String = "video"

@@ -25,6 +25,15 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
   for volume, double-tap to skip, pinch to fill the screen; subtitles (built-in tracks or .srt/.vtt/.ass
   files), audio track choice, speed, picture-in-picture, background sound with lock-screen controls,
   lock controls, rotate.
+- **Audio and subtitle delay (like VLC):** in *Audio & subtitles*, nudge the sound or the subtitles
+  earlier or later in 50 ms steps (or 0.5 s / 1 s jumps); tap the value to reset. Delays apply to
+  the current video only.
+- **Subtitle style:** size, font (sans, serif, mono, narrow, casual), bold, text colour, background
+  (none, box or band, with colour and opacity), outline/shadow and its colour, height on screen, and
+  whether to keep the styles inside .ass files. Set it in Settings or from the player, with a live preview.
+- **Frame-rate readout:** a toggle (Settings, the smoothing panel, or the I key on the web) shows the
+  video's frame rate, the frames per second actually reaching the screen, made-up frames, dropped
+  frames and the screen's refresh rate.
 
 ## Web version
 
@@ -36,7 +45,9 @@ The web player uses the same motion engine, ported to WebGL 2 with the same shad
 - Off / Blend / MEMC, split compare, motion vectors, smooth slow motion, subtitle files
   (.srt, .vtt, .ass), speed, full screen, swipe gestures on phones.
 - Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare ·
-  V motion vectors · F full screen.
+  V motion vectors · F full screen · I frame rates · J/K audio delay −/+ 50 ms ·
+  G/H subtitle delay −/+ 50 ms.
+- In the browser the sound can be moved at most 0.5 s earlier (the picture is held back to do it).
 - Not on the web: the phone's video library, MKV/HEVC files the browser can't decode,
   picture-in-picture, and saving smooth copies (Android app only).
 

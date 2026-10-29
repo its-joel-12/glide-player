@@ -26,7 +26,7 @@ import { Icon } from '@/components/icon';
 import { PlayerControls } from '@/components/player/controls';
 import { GestureLayer } from '@/components/player/gesture-layer';
 import { HudPill, type Hud } from '@/components/player/hud';
-import { SmoothingSheet, SpeedSheet, TracksSheet } from '@/components/player/sheets';
+import { AUDIO_DELAY_RANGE, SmoothingSheet, SpeedSheet, SUBTITLE_DELAY_RANGE, SubtitleStyleSheet, TracksSheet } from '@/components/player/sheets';
 import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
 import { formatFps, formatOffset, formatTime } from '@/lib/format';
@@ -34,10 +34,12 @@ import { clamp } from '@/lib/gestures';
 import { pickSubtitleFile } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResume, getResume, saveResume, startPosition } from '@/lib/resume';
-import type { SmoothingMode } from '@/lib/settings-schema';
+import { DELAY_STEP_MS, formatDelay, type SmoothingMode } from '@/lib/settings-schema';
 
-type SheetName = 'smoothing' | 'tracks' | 'speed' | null;
+type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | null;
 const isWeb = Platform.OS === 'web';
+/** The browser can only hold the picture back so far, so sound can't come more than 0.5 s early there. */
+const MIN_AUDIO_DELAY_MS = isWeb ? -500 : AUDIO_DELAY_RANGE.min;
 
 /** Back to the previous screen, or home when the player was opened directly (web refresh / link). */
 const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
@@ -84,6 +86,9 @@ export default function PlayerScreen() {
   const [tracks, setTracks] = useState<TracksEvent>({ audio: [], text: [] });
   const [info, setInfo] = useState<LoadEvent | null>(null);
   const [stats, setStats] = useState<StatsEvent | null>(null);
+  // Audio/subtitle sync for this video only (like VLC), so a fix for one file doesn't break the next.
+  const [audioDelayMs, setAudioDelayMs] = useState(0);
+  const [subtitleDelayMs, setSubtitleDelayMs] = useState(0);
   const [landscape, setLandscape] = useState<boolean | null>(() => {
     const w = Number(params.w);
     const h = Number(params.h);
@@ -205,6 +210,20 @@ export default function PlayerScreen() {
     const ok = await ref.current?.enterPip();
     if (!ok) showToast('Picture-in-picture isn’t available on this phone.');
   };
+  const changeAudioDelay = (ms: number) => {
+    const v = clamp(Math.round(ms), MIN_AUDIO_DELAY_MS, AUDIO_DELAY_RANGE.max);
+    setAudioDelayMs(v);
+    flashHud({ kind: 'text', label: `Audio delay ${formatDelay(v)}` }, 1000);
+  };
+  const changeSubtitleDelay = (ms: number) => {
+    const v = clamp(Math.round(ms), SUBTITLE_DELAY_RANGE.min, SUBTITLE_DELAY_RANGE.max);
+    setSubtitleDelayMs(v);
+    flashHud({ kind: 'text', label: `Subtitle delay ${formatDelay(v)}` }, 1000);
+  };
+  const toggleStats = () => {
+    setPreference('showStats', !prefs.showStats);
+    flashHud({ kind: 'text', label: prefs.showStats ? 'Frame rates hidden' : 'Frame rates shown' }, 800);
+  };
   const loadSubtitles = async () => {
     setSheet(null);
     const f = await pickSubtitleFile();
@@ -219,9 +238,13 @@ export default function PlayerScreen() {
     keys.current = (e: KeyboardEvent) => {
       if (sheet || (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
       const k = e.key.toLowerCase();
-      if (k === ' ' || k === 'k') playPause();
-      else if (k === 'arrowleft' || k === 'j') seekBy(-(k === 'j' ? 10 : prefs.seekStep) * 1000);
-      else if (k === 'arrowright' || k === 'l') seekBy((k === 'l' ? 10 : prefs.seekStep) * 1000);
+      if (k === ' ') playPause();
+      else if (k === 'arrowleft') seekBy(-prefs.seekStep * 1000);
+      else if (k === 'arrowright') seekBy(prefs.seekStep * 1000);
+      // VLC-style sync keys: J/K audio delay, G/H subtitle delay, I frame-rate readout.
+      else if (k === 'j' || k === 'k') changeAudioDelay(audioDelayMs + (k === 'k' ? DELAY_STEP_MS : -DELAY_STEP_MS));
+      else if (k === 'g' || k === 'h') changeSubtitleDelay(subtitleDelayMs + (k === 'h' ? DELAY_STEP_MS : -DELAY_STEP_MS));
+      else if (k === 'i') toggleStats();
       else if (k === 'arrowup' || k === 'arrowdown') {
         volume.current = setVolume(getVolume() + (k === 'arrowup' ? 0.1 : -0.1));
         flashHud({ kind: 'volume', value: volume.current }, 600);
@@ -311,6 +334,9 @@ export default function PlayerScreen() {
         pipEnabled={prefs.pip}
         backgroundAudio={prefs.backgroundAudio}
         subtitlesVisible
+        subtitleStyle={prefs.subtitleStyle}
+        audioDelayMs={audioDelayMs}
+        subtitleDelayMs={subtitleDelayMs}
         onLoad={onLoad}
         onProgress={scrubMs == null ? onProgress : undefined}
         onStats={(e) => setStats(e.nativeEvent)}
@@ -460,11 +486,13 @@ export default function PlayerScreen() {
             </>
           ) : null}
 
-          {prefs.showStats && stats ? (
-            <View pointerEvents="none" style={[styles.stats, { bottom: insets.bottom + (showControls ? 96 : 12), left: insets.left + 12 }]}>
-              <ThemedText font="mono" color={Screen.text} style={styles.statsText}>
-                {`${formatFps(stats.inputFps)} → ${Math.round(stats.outputFps)} fps · ${Math.round(stats.generatedFps)} new/s · ${Math.round(stats.displayHz)} Hz`}
-              </ThemedText>
+          {prefs.showStats ? (
+            <View pointerEvents="none" style={[styles.stats, { top: insets.top + (showControls ? 64 : 12) + (compare && prefs.mode !== 'off' ? 34 : 0), right: insets.right + 12 }]}>
+              {statsLines(stats, sourceFps, prefs.mode, paused).map((line, i) => (
+                <ThemedText key={i} font="mono" color={i === 0 ? Screen.text : Screen.textDim} style={styles.statsText}>
+                  {line}
+                </ThemedText>
+              ))}
             </View>
           ) : null}
 
@@ -499,6 +527,8 @@ export default function PlayerScreen() {
         quality={prefs.quality}
         onQuality={(q) => setPreference('quality', q)}
         sourceFps={sourceFps}
+        showStats={prefs.showStats}
+        onShowStats={(v) => setPreference('showStats', v)}
       />
       <TracksSheet
         visible={sheet === 'tracks'}
@@ -513,6 +543,18 @@ export default function PlayerScreen() {
           setSheet(null);
         }}
         onLoadSubtitles={() => void loadSubtitles()}
+        audioDelayMs={audioDelayMs}
+        onAudioDelay={changeAudioDelay}
+        minAudioDelayMs={MIN_AUDIO_DELAY_MS}
+        subtitleDelayMs={subtitleDelayMs}
+        onSubtitleDelay={changeSubtitleDelay}
+        onSubtitleStyle={() => setSheet('subtitleStyle')}
+      />
+      <SubtitleStyleSheet
+        visible={sheet === 'subtitleStyle'}
+        onClose={() => setSheet('tracks')}
+        value={prefs.subtitleStyle}
+        onChange={(st) => setPreference('subtitleStyle', st)}
       />
       <SpeedSheet
         visible={sheet === 'speed'}
@@ -528,6 +570,17 @@ export default function PlayerScreen() {
   );
 }
 
+/** The frame-rate readout: what the file has, what reaches the screen, what was made up or lost. */
+function statsLines(stats: StatsEvent | null, sourceFps: number, mode: SmoothingMode, paused: boolean): string[] {
+  if (!stats) return ['Measuring frame rate…'];
+  const shown = Math.round(stats.renderedFps || stats.outputFps);
+  const head = `${sourceFps > 0 ? formatFps(sourceFps) : '?'} fps video → ${paused ? 'paused' : `${shown} fps on screen`}`;
+  const parts = [`decoded ${formatFps(stats.inputFps)}/s`];
+  if (stats.smoothing && mode !== 'off') parts.push(`made ${Math.round(stats.generatedFps)}/s`);
+  parts.push(`dropped ${Math.round(stats.droppedFps)}/s`, `${Math.round(stats.displayHz)} Hz`);
+  return [head, parts.join(' · '), mode === 'off' || !stats.smoothing ? 'Smoothing off' : stats.motion ? (mode === 'memc' ? 'MEMC active' : 'Blend active') : 'Smoothing idle'];
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: Screen.black },
   centered: { alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24 },
@@ -537,7 +590,7 @@ const styles = StyleSheet.create({
   tag: { backgroundColor: Screen.scrim, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 4, fontSize: 12, overflow: 'hidden' },
   tagOn: { backgroundColor: Screen.accent },
   unlock: { position: 'absolute', width: 56, height: 56, borderRadius: 28, backgroundColor: Screen.scrim, alignItems: 'center', justifyContent: 'center' },
-  stats: { position: 'absolute', backgroundColor: Screen.scrim, borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  stats: { position: 'absolute', backgroundColor: Screen.scrim, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, alignItems: 'flex-end' },
   statsText: { fontSize: 11.5 },
   toast: { position: 'absolute', alignSelf: 'center', backgroundColor: Screen.scrim, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
 });

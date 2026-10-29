@@ -52,7 +52,22 @@ export function GlidePlayer(props: Props) {
     [],
   );
 
-  const { source, paused, rate = 1, muted = false, mode = 'memc', quality = 'balanced', targetFps = 0, compare = false, split = 0.5, showVectors = false, resizeMode = 'fit' } = props;
+  const {
+    source,
+    paused,
+    rate = 1,
+    muted = false,
+    mode = 'memc',
+    quality = 'balanced',
+    targetFps = 0,
+    compare = false,
+    split = 0.5,
+    showVectors = false,
+    resizeMode = 'fit',
+    audioDelayMs = 0,
+    subtitleDelayMs = 0,
+    subtitleStyle,
+  } = props;
 
   useEffect(() => {
     coreRef.current?.setSource(source);
@@ -69,8 +84,22 @@ export function GlidePlayer(props: Props) {
   useEffect(() => {
     const core = coreRef.current;
     if (!core) return;
-    core.settings = { mode: MODE[mode], quality, targetFps, compare, split, vectors: showVectors, resize: resizeMode };
-  }, [mode, quality, targetFps, compare, split, showVectors, resizeMode]);
+    core.settings = {
+      mode: MODE[mode],
+      quality,
+      targetFps,
+      compare,
+      split,
+      vectors: showVectors,
+      resize: resizeMode,
+      audioDelay: audioDelayMs / 1000,
+      subtitleDelay: subtitleDelayMs / 1000,
+    };
+    core.updateAudioDelay();
+  }, [mode, quality, targetFps, compare, split, showVectors, resizeMode, audioDelayMs, subtitleDelayMs]);
+  useEffect(() => {
+    if (subtitleStyle) coreRef.current?.setSubtitleStyle(subtitleStyle);
+  }, [subtitleStyle]);
 
   return (
     <View style={[{ backgroundColor: '#000', overflow: 'hidden' }, props.style]}>

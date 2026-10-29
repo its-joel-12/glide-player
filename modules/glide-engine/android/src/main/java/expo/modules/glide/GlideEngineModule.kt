@@ -80,6 +80,9 @@ class GlideEngineModule : Module() {
       Prop("pipEnabled") { view: GlidePlayerView, enabled: Boolean -> view.setPipEnabled(enabled) }
       Prop("backgroundAudio") { view: GlidePlayerView, enabled: Boolean -> view.setBackgroundAudio(enabled) }
       Prop("subtitlesVisible") { view: GlidePlayerView, visible: Boolean -> view.setSubtitlesVisible(visible) }
+      Prop("audioDelayMs") { view: GlidePlayerView, ms: Double -> view.setAudioDelay(ms) }
+      Prop("subtitleDelayMs") { view: GlidePlayerView, ms: Double -> view.setSubtitleDelay(ms) }
+      Prop("subtitleStyle") { view: GlidePlayerView, style: SubtitleStyleRecord? -> view.setSubtitleStyle(style) }
 
       AsyncFunction("seekTo") { view: GlidePlayerView, positionMs: Double -> view.seekTo(positionMs.toLong()) }
       AsyncFunction("setAudioTrack") { view: GlidePlayerView, id: String? -> view.selectTrack(C.TRACK_TYPE_AUDIO, id) }

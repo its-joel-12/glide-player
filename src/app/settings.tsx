@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/button';
 import { Segmented } from '@/components/segmented';
+import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -107,7 +108,7 @@ export default function SettingsScreen() {
               dense
             />
           </Field>
-          <Toggle label="Show frame rate on the player" detail="Source fps → screen fps, and made-up frames per second." value={prefs.showStats} onChange={(v) => setPreference('showStats', v)} />
+          <Toggle label="Show frame rate on the player" detail="Video fps, frames reaching the screen, made-up and dropped frames." value={prefs.showStats} onChange={(v) => setPreference('showStats', v)} />
         </Group>
 
         <Group title="Playback">
@@ -127,6 +128,12 @@ export default function SettingsScreen() {
           <Field label="Double-tap to skip">
             <Segmented options={SeekStepOptions.map((s) => ({ value: s, label: `${s} s` }))} value={prefs.seekStep} onChange={(v) => setPreference('seekStep', v)} dense />
           </Field>
+        </Group>
+
+        <Group title="Subtitles">
+          <View style={styles.field}>
+            <SubtitleStyleEditor value={prefs.subtitleStyle} onChange={(s) => setPreference('subtitleStyle', s)} />
+          </View>
         </Group>
 
         <Group title="Appearance">
@@ -150,7 +157,7 @@ export default function SettingsScreen() {
             <ThemedText type="caption" themeColor="textSecondary">
               MEMC (motion estimation, motion compensation) finds how each block of the picture moves between two frames and draws new
               frames along those paths. Netflix, Prime Video and YouTube protect their streams, so Glide plays your own video files.
-              {isWeb ? ' Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare · V motion vectors · F full screen.' : ''}
+              {isWeb ? ' Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare · V motion vectors · F full screen · I frame rates · J/K audio delay −/+ · G/H subtitle delay −/+.' : ''}
             </ThemedText>
           </View>
         </Group>

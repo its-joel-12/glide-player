@@ -1,4 +1,7 @@
 /** Saved settings and how to read them back safely (no React Native imports: used by tests too). */
+import type { SubtitleStyle } from '../../modules/glide-engine/src/GlideEngine.types';
+
+export type { SubtitleStyle };
 
 export type ThemePreference = 'system' | 'light' | 'dark';
 export type SmoothingMode = 'off' | 'blend' | 'memc';
@@ -23,6 +26,21 @@ export type Preferences = {
   seekStep: number;
   /** Turn the phone sideways for wide videos. */
   autoRotate: boolean;
+  subtitleStyle: SubtitleStyle;
+};
+
+export const DefaultSubtitleStyle: SubtitleStyle = {
+  scale: 1,
+  font: 'sans',
+  bold: false,
+  color: '#FFFFFF',
+  background: 'none',
+  backgroundColor: '#000000',
+  backgroundOpacity: 0.5,
+  edge: 'outline',
+  edgeColor: '#000000',
+  position: 0.08,
+  useFileStyles: true,
 };
 
 export const DefaultPreferences: Preferences = {
@@ -36,6 +54,7 @@ export const DefaultPreferences: Preferences = {
   resume: true,
   seekStep: 10,
   autoRotate: true,
+  subtitleStyle: DefaultSubtitleStyle,
 };
 
 const oneOf = <T extends string>(value: unknown, options: readonly T[], fallback: T): T =>
@@ -44,6 +63,40 @@ const bool = (value: unknown, fallback: boolean) => (typeof value === 'boolean' 
 
 export const TargetFpsOptions = [0, 60, 90, 120, 144] as const;
 export const SeekStepOptions = [5, 10, 15, 30] as const;
+
+const hexColor = (value: unknown, fallback: string) => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : fallback);
+const num = (value: unknown, lo: number, hi: number, fallback: number) =>
+  typeof value === 'number' && Number.isFinite(value) ? Math.min(hi, Math.max(lo, value)) : fallback;
+
+export function normalizeSubtitleStyle(saved: unknown): SubtitleStyle {
+  const s = (saved && typeof saved === 'object' ? saved : {}) as Record<string, unknown>;
+  const d = DefaultSubtitleStyle;
+  return {
+    scale: num(s.scale, 0.5, 2.5, d.scale),
+    font: oneOf(s.font, ['sans', 'serif', 'mono', 'condensed', 'casual'] as const, d.font),
+    bold: bool(s.bold, d.bold),
+    color: hexColor(s.color, d.color),
+    background: oneOf(s.background, ['none', 'box', 'band'] as const, d.background),
+    backgroundColor: hexColor(s.backgroundColor, d.backgroundColor),
+    backgroundOpacity: num(s.backgroundOpacity, 0, 1, d.backgroundOpacity),
+    edge: oneOf(s.edge, ['none', 'outline', 'shadow', 'raised', 'depressed'] as const, d.edge),
+    edgeColor: hexColor(s.edgeColor, d.edgeColor),
+    position: num(s.position, 0, 0.4, d.position),
+    useFileStyles: bool(s.useFileStyles, d.useFileStyles),
+  };
+}
+
+/** Steps for audio/subtitle delay buttons and keys (ms), like VLC. */
+export const DELAY_STEP_MS = 50;
+
+/** "+150 ms", "−1.25 s", "0 ms". */
+export function formatDelay(ms: number): string {
+  const r = Math.round(ms);
+  if (r === 0) return '0 ms';
+  const sign = r > 0 ? '+' : '−';
+  const a = Math.abs(r);
+  return a >= 1000 ? `${sign}${(a / 1000).toFixed(a % 1000 === 0 ? 0 : 2).replace(/0$/, '')} s` : `${sign}${a} ms`;
+}
 
 /** Reads saved settings, dropping anything unknown or out of range. */
 export function normalizePreferences(saved: unknown): Preferences {
@@ -60,5 +113,6 @@ export function normalizePreferences(saved: unknown): Preferences {
     resume: bool(s.resume, d.resume),
     seekStep: (SeekStepOptions as readonly number[]).includes(s.seekStep as number) ? (s.seekStep as number) : d.seekStep,
     autoRotate: bool(s.autoRotate, d.autoRotate),
+    subtitleStyle: normalizeSubtitleStyle(s.subtitleStyle),
   };
 }

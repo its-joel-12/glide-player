@@ -4,9 +4,10 @@
  * (requestVideoFrameCallback); the picture runs a little over one frame behind so there's always
  * a "next" frame to interpolate towards, and the sound is delayed by the same amount (Web Audio).
  */
-import type { LoadEvent, PlaybackStateEvent, PlayerErrorEvent, ProgressEvent, ResizeMode, StatsEvent, TracksEvent } from '../GlideEngine.types';
+import type { LoadEvent, PlaybackStateEvent, PlayerErrorEvent, ProgressEvent, ResizeMode, StatsEvent, SubtitleStyle, TracksEvent } from '../GlideEngine.types';
 import { DEMO_FPS, DEMO_H, DEMO_LENGTH, DEMO_URI, DEMO_W, drawDemo } from './demo';
 import { WebMotionEngine, type Frame, type Quality, type Rect } from './engine';
+import { DEFAULT_SUBTITLE_STYLE, subtitleCss } from './subtitle-style';
 import { cueAt, parseSubtitles, type Cue } from './subtitles';
 
 export type CoreCallbacks = {
@@ -27,6 +28,10 @@ export type CoreSettings = {
   split: number;
   vectors: boolean;
   resize: ResizeMode;
+  /** Seconds; positive = sound later than the picture. */
+  audioDelay: number;
+  /** Seconds; positive = subtitles later. */
+  subtitleDelay: number;
 };
 
 type Source = { uri: string; startPositionMs?: number; subtitles?: { uri: string; label?: string; language?: string }[] };
@@ -37,14 +42,18 @@ type VideoWithRVFC = HTMLVideoElement & {
 };
 
 const KEEP = 3; // frames kept: A, B and the newest one
+const MAX_KEEP = 14; // with the picture held back (negative audio delay)
+/** The web can hold the picture back by at most this much (it keeps decoded frames on the GPU). */
+export const MIN_AUDIO_DELAY = -0.5;
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
 
 export class WebPlayerCore {
-  settings: CoreSettings = { mode: 2, quality: 'balanced', targetFps: 0, compare: false, split: 0.5, vectors: false, resize: 'fit' };
+  settings: CoreSettings = { mode: 2, quality: 'balanced', targetFps: 0, compare: false, split: 0.5, vectors: false, resize: 'fit', audioDelay: 0, subtitleDelay: 0 };
 
   private readonly video: VideoWithRVFC;
   private readonly canvas: HTMLCanvasElement;
   private readonly subtitleEl: HTMLDivElement;
+  private readonly subtitleText: HTMLSpanElement;
   private engine: WebMotionEngine | null = null;
   private frames: Frame[] = [];
   private dts: number[] = [];
@@ -65,6 +74,8 @@ export class WebPlayerCore {
   private lastProgress = 0;
   private lastStats = 0;
   private counts = { input: 0, output: 0, generated: 0, lastShown: -1 };
+  /** Browser's running count of dropped video frames at the last stats tick. */
+  private droppedTotal = -1;
   private tracks: TextTrack[] = [];
   private textId: string | null = null;
   private shownTime = 0;
@@ -91,22 +102,16 @@ export class WebPlayerCore {
     const canvas = document.createElement('canvas');
     Object.assign(canvas.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', display: 'block' });
     const subs = document.createElement('div');
-    Object.assign(subs.style, {
-      position: 'absolute',
-      left: '6%',
-      right: '6%',
-      bottom: '11%',
-      textAlign: 'center',
-      color: '#fff',
-      font: '600 clamp(16px, 3.4vmin, 34px)/1.3 Barlow, system-ui, sans-serif',
-      textShadow: '0 0 4px #000, 0 0 2px #000, 0 2px 6px rgba(0,0,0,0.8)',
-      whiteSpace: 'pre-line',
-      pointerEvents: 'none',
-    });
+    Object.assign(subs.style, { position: 'absolute', left: '0', right: '0', textAlign: 'center', lineHeight: '1.3', whiteSpace: 'pre-line', pointerEvents: 'none' });
+    const subsText = document.createElement('span');
+    Object.assign(subsText.style, { display: 'inline-block', maxWidth: '88%', borderRadius: '0.15em', boxDecorationBreak: 'clone' });
+    subs.append(subsText);
+    this.subtitleText = subsText;
     host.append(video, canvas, subs);
     this.video = video;
     this.canvas = canvas;
     this.subtitleEl = subs;
+    this.setSubtitleStyle(DEFAULT_SUBTITLE_STYLE);
 
     try {
       this.engine = new WebMotionEngine(canvas, KEEP + 1);
@@ -206,6 +211,31 @@ export class WebPlayerCore {
     } else if (Number.isFinite(this.video.duration)) {
       this.video.currentTime = Math.min(this.video.duration - 0.05, s);
     }
+  }
+
+  setSubtitleStyle(style: SubtitleStyle) {
+    const css = subtitleCss(style);
+    Object.assign(this.subtitleEl.style, css.box);
+    Object.assign(this.subtitleText.style, css.text);
+  }
+
+  /** Seconds the picture is held back beyond the normal one-frame delay (for negative audio delay). */
+  private extraDelay() {
+    return Math.max(0, -Math.max(MIN_AUDIO_DELAY, this.settings.audioDelay));
+  }
+
+  private keepFrames() {
+    const extraMedia = this.extraDelay() * this.rate;
+    return Math.min(MAX_KEEP, KEEP + Math.ceil(extraMedia / Math.max(0.01, this.frameDur)));
+  }
+
+  /** Delay for the sound (seconds), so it lines up with the picture plus the chosen audio delay. */
+  updateAudioDelay() {
+    const a = this.audio;
+    if (!a?.routed) return;
+    const audioDelay = Math.max(MIN_AUDIO_DELAY, this.settings.audioDelay);
+    const picture = this.frameDur / this.rate + this.margin + this.extraDelay();
+    a.delay.delayTime.setTargetAtTime(Math.min(3.9, Math.max(0, picture + audioDelay)), a.ctx.currentTime, 0.05);
   }
 
   setTextTrack(id: string | null) {
@@ -388,13 +418,14 @@ export class WebPlayerCore {
       const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctx) return;
       const ctx = new Ctx();
-      const delay = ctx.createDelay(1);
+      const delay = ctx.createDelay(4);
       this.audio = { ctx, delay, routed: false };
       void ctx.resume().then(() => {
         if (ctx.state !== 'running' || !this.audio || this.audio.routed || this.destroyed) return;
         const node = ctx.createMediaElementSource(this.video);
         node.connect(delay).connect(ctx.destination);
         this.audio.routed = true;
+        this.updateAudioDelay();
       });
     } catch {
       this.audio = null;
@@ -415,13 +446,15 @@ export class WebPlayerCore {
   private ingest(src: TexImageSource, t: number, w: number, h: number) {
     const e = this.engine;
     if (!e || !w || !h) return;
+    const keep = this.keepFrames();
+    e.setSlotCount(keep + 1);
     if (e.configure(w, h, this.settings.quality)) this.frames = [];
     const last = this.frames[this.frames.length - 1];
     if (last) {
       if (t < last.t - 1e-3) this.frames = [];
       else if (t <= last.t + 1e-4) return;
     }
-    while (this.frames.length >= KEEP) this.frames.shift();
+    while (this.frames.length >= keep) this.frames.shift();
     const f = e.ingest(src, t, new Set(this.frames));
     const prev = this.frames[this.frames.length - 1];
     if (prev) {
@@ -503,10 +536,15 @@ export class WebPlayerCore {
       const dt = this.lastStats ? (now - this.lastStats) / 1000 : 1;
       this.lastStats = now;
       const hz = this.displayHz();
+      const dropTotal = this.video.getVideoPlaybackQuality?.().droppedVideoFrames ?? 0;
+      const dropped = this.droppedTotal < 0 ? 0 : Math.max(0, dropTotal - this.droppedTotal);
+      this.droppedTotal = dropTotal;
       this.cb.onStats({
         inputFps: this.counts.input / dt,
         outputFps: this.counts.output / dt,
         generatedFps: this.counts.generated / dt,
+        renderedFps: this.counts.output / dt,
+        droppedFps: dropped / dt,
         sourceFps: this.frames.length > 1 ? 1 / this.frameDur : 0,
         targetFps: this.settings.targetFps || hz,
         displayHz: hz,
@@ -516,8 +554,7 @@ export class WebPlayerCore {
       this.counts.input = 0;
       this.counts.output = 0;
       this.counts.generated = 0;
-      const a = this.audio;
-      if (a?.routed) a.delay.delayTime.setTargetAtTime(this.frameDur / this.rate + this.margin, a.ctx.currentTime, 0.2);
+      this.updateAudioDelay();
     }
   };
 
@@ -538,7 +575,7 @@ export class WebPlayerCore {
       this.shownTime = last.t;
       return;
     }
-    let target = this.mediaNow(now) - (this.frameDur + this.margin * this.rate);
+    let target = this.mediaNow(now) - (this.frameDur + (this.margin + this.extraDelay()) * this.rate);
     if (s.targetFps > 0 && s.targetFps < this.displayHz() - 1) {
       const step = this.rate / s.targetFps;
       target = Math.floor(target / step) * step;
@@ -572,7 +609,8 @@ export class WebPlayerCore {
   private updateSubtitles() {
     const track = this.tracks.find((t) => t.id === this.textId);
     const time = this.engine ? this.shownTime : this.video.currentTime;
-    const text = track ? cueAt(track.cues, time) : '';
-    if (this.subtitleEl.textContent !== text) this.subtitleEl.textContent = text;
+    const text = track ? cueAt(track.cues, time - this.settings.subtitleDelay) : '';
+    if (this.subtitleText.textContent !== text) this.subtitleText.textContent = text;
+    this.subtitleEl.style.visibility = text ? 'visible' : 'hidden';
   }
 }

@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -42,6 +43,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.CaptionStyleCompat
 import androidx.media3.ui.SubtitleView
 import com.google.common.util.concurrent.ListenableFuture
 import expo.modules.glide.memc.MemcSettings
@@ -95,6 +97,8 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
   private var statsIn = 0L
   private var statsOut = 0L
   private var statsGen = 0L
+  private var statsRendered = 0L
+  private var statsDropped = 0L
 
   // region Player events
 
@@ -240,6 +244,9 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
     val inF = st.inputFrames.get()
     val outF = st.outputFrames.get()
     val genF = st.generatedFrames.get()
+    val timing = PlayerHolder.timing
+    val rendered = timing.renderedFrames.get()
+    val dropped = timing.droppedFrames.get()
     if (statsAt > 0) {
       val dt = (now - statsAt) / 1000.0
       if (dt > 0.2) {
@@ -248,6 +255,8 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
             "inputFps" to (inF - statsIn) / dt,
             "outputFps" to (outF - statsOut) / dt,
             "generatedFps" to (genF - statsGen) / dt,
+            "renderedFps" to (rendered - statsRendered) / dt,
+            "droppedFps" to (dropped - statsDropped) / dt,
             "sourceFps" to (player.videoFormat?.frameRate?.takeIf { it > 0 }?.toDouble() ?: 0.0),
             "targetFps" to settings.targetFps.toDouble(),
             "displayHz" to DisplayInfo.currentRefreshRate(activity()).toDouble(),
@@ -261,6 +270,8 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
     statsIn = inF
     statsOut = outF
     statsGen = genF
+    statsRendered = rendered
+    statsDropped = dropped
   }
 
   // endregion
@@ -389,6 +400,58 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
   fun setBackgroundAudio(enabled: Boolean) {
     backgroundAudio = enabled
   }
+
+  fun setAudioDelay(ms: Double) {
+    PlayerHolder.timing.audioDelayUs = (ms.coerceIn(-10_000.0, 10_000.0) * 1000).toLong()
+  }
+
+  fun setSubtitleDelay(ms: Double) {
+    PlayerHolder.timing.subtitleDelayUs = (ms.coerceIn(-60_000.0, 60_000.0) * 1000).toLong()
+  }
+
+  fun setSubtitleStyle(style: SubtitleStyleRecord?) {
+    val st = style ?: SubtitleStyleRecord()
+    val base = parseColor(st.color, Color.WHITE)
+    val bg = parseColor(st.backgroundColor, Color.BLACK)
+    val alpha = (st.backgroundOpacity.coerceIn(0.0, 1.0) * 255).toInt()
+    val withAlpha = (alpha shl 24) or (bg and 0xFFFFFF)
+    val family = when (st.font) {
+      "serif" -> "serif"
+      "mono" -> "monospace"
+      "condensed" -> "sans-serif-condensed"
+      "casual" -> "casual"
+      else -> "sans-serif"
+    }
+    val typeface = Typeface.create(family, if (st.bold) Typeface.BOLD else Typeface.NORMAL)
+    val edgeType = when (st.edge) {
+      "none" -> CaptionStyleCompat.EDGE_TYPE_NONE
+      "shadow" -> CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW
+      "raised" -> CaptionStyleCompat.EDGE_TYPE_RAISED
+      "depressed" -> CaptionStyleCompat.EDGE_TYPE_DEPRESSED
+      else -> CaptionStyleCompat.EDGE_TYPE_OUTLINE
+    }
+    subtitleView.setStyle(
+      CaptionStyleCompat(
+        base,
+        if (st.background == "box") withAlpha else Color.TRANSPARENT,
+        if (st.background == "band") withAlpha else Color.TRANSPARENT,
+        edgeType,
+        parseColor(st.edgeColor, Color.BLACK),
+        typeface,
+      )
+    )
+    subtitleView.setApplyEmbeddedStyles(st.useFileStyles)
+    subtitleView.setApplyEmbeddedFontSizes(st.useFileStyles)
+    subtitleView.setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * st.scale.toFloat().coerceIn(0.4f, 3f))
+    subtitleView.setBottomPaddingFraction(st.position.toFloat().coerceIn(0f, 0.45f))
+  }
+
+  private fun parseColor(value: String, fallback: Int): Int =
+    try {
+      Color.parseColor(value)
+    } catch (_: IllegalArgumentException) {
+      fallback
+    }
 
   fun setSubtitlesVisible(visible: Boolean) {
     subtitleView.visibility = if (visible) VISIBLE else INVISIBLE
@@ -606,6 +669,8 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
     if (isActive) {
       player.stop()
       player.clearMediaItems()
+      PlayerHolder.timing.audioDelayUs = 0
+      PlayerHolder.timing.subtitleDelayUs = 0
     }
     settings.compare = false
     settings.showVectors = false

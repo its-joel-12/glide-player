@@ -42,7 +42,7 @@ export class WebMotionEngine {
 
   constructor(
     canvas: HTMLCanvasElement,
-    private readonly slotCount = 4,
+    private slotCount = 4,
   ) {
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, powerPreference: 'high-performance' });
     if (!gl) throw new Error('WebGL 2 is not available in this browser.');
@@ -132,9 +132,14 @@ export class WebMotionEngine {
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
+  /** How many frames to keep textures for (more when the picture is held back for audio delay). */
+  setSlotCount(n: number) {
+    this.slotCount = Math.max(2, Math.round(n));
+  }
+
   /** Sets up textures for w×h frames. Returns true when it (re)allocated, which drops history. */
   configure(w: number, h: number, q: Quality): boolean {
-    if (w === this.width && h === this.height && q === this.quality && this.slots.length) return false;
+    if (w === this.width && h === this.height && q === this.quality && this.slots.length === this.slotCount) return false;
     this.releaseTextures();
     const gl = this.gl;
     this.width = w;

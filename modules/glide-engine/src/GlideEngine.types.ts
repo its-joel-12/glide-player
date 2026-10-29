@@ -6,6 +6,27 @@ export type SmoothingMode = 'off' | 'blend' | 'memc';
 export type AnalysisQuality = 'fast' | 'balanced' | 'detailed';
 export type ResizeMode = 'fit' | 'fill' | 'zoom';
 
+/** How subtitles look. */
+export type SubtitleStyle = {
+  /** 1 = normal size (0.5–2). */
+  scale: number;
+  font: 'sans' | 'serif' | 'mono' | 'condensed' | 'casual';
+  bold: boolean;
+  /** #RRGGBB */
+  color: string;
+  /** none, a box behind the text, or a full-width band */
+  background: 'none' | 'box' | 'band';
+  backgroundColor: string;
+  /** 0..1 */
+  backgroundOpacity: number;
+  edge: 'none' | 'outline' | 'shadow' | 'raised' | 'depressed';
+  edgeColor: string;
+  /** Distance from the bottom of the picture, as a fraction of its height (0–0.4). */
+  position: number;
+  /** Use the colours, fonts and sizes in the subtitle file itself (ASS, embedded tracks). */
+  useFileStyles: boolean;
+};
+
 export type SubtitleSource = { uri: string; mimeType?: string; language?: string; label?: string };
 
 export type VideoSource = {
@@ -36,6 +57,10 @@ export type StatsEvent = {
   outputFps: number;
   /** Made-up (in-between) frames per second. */
   generatedFps: number;
+  /** Frames per second that actually reached the screen. */
+  renderedFps: number;
+  /** Frames per second the player had to drop (too late). */
+  droppedFps: number;
   sourceFps: number;
   targetFps: number;
   displayHz: number;
@@ -66,6 +91,11 @@ export type GlidePlayerProps = {
   pipEnabled?: boolean;
   backgroundAudio?: boolean;
   subtitlesVisible?: boolean;
+  /** Positive = sound later than the picture (ms). */
+  audioDelayMs?: number;
+  /** Positive = subtitles later (ms). */
+  subtitleDelayMs?: number;
+  subtitleStyle?: SubtitleStyle;
   style?: StyleProp<ViewStyle>;
   onLoad?: (e: NativeEvent<LoadEvent>) => void;
   onProgress?: (e: NativeEvent<ProgressEvent>) => void;
