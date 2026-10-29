@@ -42,7 +42,9 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## This project: Glide (video player with motion smoothing)
 
-- **Android first.** The smoothing engine is a local Expo module in `modules/glide-engine` (Kotlin, autolinked from `./modules`). There is no iOS engine yet: `GlidePlayer` shows a placeholder on other platforms. An iOS version needs the same effect written for AVFoundation + Metal behind the same TypeScript API (`modules/glide-engine/src/GlideEngine.types.ts`).
+- **Android and web.** The smoothing engine is a local Expo module in `modules/glide-engine` (Kotlin, autolinked from `./modules`). The web version is `GlidePlayer.web.tsx` + `src/web/` (WebGL 2 port with the same shaders and props). There is no iOS engine yet: `GlidePlayer` shows a placeholder there. An iOS version needs the same effect written for AVFoundation + Metal behind the same TypeScript API (`modules/glide-engine/src/GlideEngine.types.ts`).
+- **Web specifics:** platform files (`*.web.ts(x)`) replace Android-only parts: `src/app/index.web.tsx` (open a file / demo instead of the library), `src/lib/library.web.ts` and `thumbnails.web.ts` (stubs), `src/hooks/use-color-scheme.web.ts` (pages are pre-rendered in light mode, so the theme switches after hydration). Don't touch `window`/`document` during render (static rendering runs in Node).
+- **Shaders live in two places:** `memc/Shaders.kt` (Android) and `src/web/shaders.ts` (web). They must stay identical; `npm test` checks it.
 - **Engine layout** (`modules/glide-engine/android/src/main/java/expo/modules/glide/`):
   - `memc/` — the GPU frame-interpolation effect. `MemcShaderProgram` is a Media3 `GlShaderProgram` used both by ExoPlayer (`setVideoEffects`, live playback) and by Transformer (saved copies). `MotionEngine` does the luma pyramid, block-matching motion estimation and interpolation; shaders are in `Shaders.kt` (GLSL ES 3.00).
   - `GlidePlayerView` — the native view (ExoPlayer surface, subtitles, tracks, picture-in-picture, refresh rate). `PlayerHolder` — the one shared player + media session. `SmoothExporter` — Transformer export to Movies/Glide.

@@ -91,5 +91,26 @@ eq(s.normalizePreferences({ quality: 'nope' }).quality, 'balanced', 'bad quality
 eq(s.normalizePreferences({ seekStep: 7 }).seekStep, 10, 'bad seek step → default');
 eq(s.normalizePreferences({ pip: false }).pip, false, 'keeps pip off');
 
+// web subtitles
+const sub = require('../modules/glide-engine/src/web/subtitles.ts');
+eq(sub.parseTimestamp('00:01:02,500'), 62.5, 'srt timestamp');
+eq(sub.parseTimestamp('01:02.250'), 62.25, 'vtt short timestamp');
+const srt = sub.parseSrtOrVtt('1\r\n00:00:01,000 --> 00:00:02,500\r\n<i>Hello</i>\r\nthere\r\n\r\n2\r\n00:00:03,000 --> 00:00:04,000\r\nBye\r\n');
+eq(srt, [{ start: 1, end: 2.5, text: 'Hello\nthere' }, { start: 3, end: 4, text: 'Bye' }], 'parse srt (CRLF, tags)');
+const vtt = sub.parseSubtitles('WEBVTT\n\n00:00.500 --> 00:01.500 align:center\nHi', 'a.vtt');
+eq(vtt, [{ start: 0.5, end: 1.5, text: 'Hi' }], 'parse vtt with settings');
+const ass = sub.parseSubtitles('[Script Info]\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:01.00,0:00:02.00,Default,,0,0,0,,{\\b1}Bold, yes\\Nline two', 'a.ass');
+eq(ass, [{ start: 1, end: 2, text: 'Bold, yes\nline two' }], 'parse ass (commas, tags, \\N)');
+eq(sub.cueAt(srt, 1.2), 'Hello\nthere', 'cue at 1.2');
+eq(sub.cueAt(srt, 2.7), '', 'no cue between');
+
+// the web engine uses the same shaders as the Android engine
+const fs = require('fs');
+const kt = fs.readFileSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/java/expo/modules/glide/memc/Shaders.kt'), 'utf8');
+const web = require('../modules/glide-engine/src/web/shaders.ts');
+const ktShaders = Object.fromEntries([...kt.matchAll(/const val (\w+) = """([\s\S]*?)"""/g)].map((m) => [m[1], m[2]]));
+eq(Object.keys(ktShaders).sort(), Object.keys(web).sort(), 'same shader list on Android and web');
+eq(Object.keys(ktShaders).every((k) => ktShaders[k] === web[k]), true, 'shader sources identical on Android and web');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

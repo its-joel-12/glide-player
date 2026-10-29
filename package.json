@@ -57,7 +57,9 @@
     "test": "node tests/app.test.js",
     "build:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:apk": "npx eas-cli@latest build --platform android --profile preview",
-    "build:apk:local": "node ./scripts/build-apk-local.js"
+    "build:apk:local": "node ./scripts/build-apk-local.js",
+    "web": "expo start --web",
+    "build:web": "expo export --platform web"
   },
   "private": true
 }

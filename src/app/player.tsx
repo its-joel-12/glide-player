@@ -17,7 +17,7 @@ import {
   type VideoSource,
 } from 'glide-engine';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -37,6 +37,16 @@ import { clearResume, getResume, saveResume, startPosition } from '@/lib/resume'
 import type { SmoothingMode } from '@/lib/settings-schema';
 
 type SheetName = 'smoothing' | 'tracks' | 'speed' | null;
+const isWeb = Platform.OS === 'web';
+
+/** Back to the previous screen, or home when the player was opened directly (web refresh / link). */
+const goBack = () => (router.canGoBack() ? router.back() : router.replace('/'));
+
+function toggleFullscreen() {
+  if (typeof document === 'undefined') return;
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  else void document.documentElement.requestFullscreen?.().catch(() => {});
+}
 const MODES: SmoothingMode[] = ['off', 'blend', 'memc'];
 const RESIZE: ResizeMode[] = ['fit', 'zoom', 'fill'];
 const RESIZE_LABEL: Record<ResizeMode, string> = { fit: 'Fit', zoom: 'Fill screen (crop)', fill: 'Stretch' };
@@ -122,8 +132,10 @@ export default function PlayerScreen() {
   // ---- orientation, brightness restore, resume on exit
   useEffect(() => {
     return () => {
-      void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-      void Brightness.restoreSystemBrightnessAsync().catch(() => {});
+      if (!isWeb) {
+        void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
+        void Brightness.restoreSystemBrightnessAsync().catch(() => {});
+      }
       const p = posRef.current;
       if (p.durationMs > 0) saveResume(id, { positionMs: p.positionMs, durationMs: p.durationMs, title, uri: params.uri });
       [hudTimer, toastTimer].forEach((t) => t.current && clearTimeout(t.current));
@@ -131,13 +143,15 @@ export default function PlayerScreen() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const applyOrientation = useCallback((wide: boolean) => {
+    if (isWeb) return;
     setLandscape(wide);
-    void ScreenOrientation.lockAsync(wide ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    void ScreenOrientation.lockAsync(wide ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []);
 
   useEffect(() => {
     // Before the video reports its size, use the size from the library (if any).
-    if (landscape !== null) void ScreenOrientation.lockAsync(landscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP);
+    if (!isWeb && landscape !== null)
+      void ScreenOrientation.lockAsync(landscape ? ScreenOrientation.OrientationLock.LANDSCAPE : ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- native events
@@ -199,6 +213,48 @@ export default function PlayerScreen() {
     showToast(`Added subtitles: ${f.name}`);
   };
 
+  // ---- web: keyboard shortcuts, and moving the mouse shows the controls
+  const keys = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => {
+    keys.current = (e: KeyboardEvent) => {
+      if (sheet || (e.target as HTMLElement | null)?.closest?.('input, textarea, select')) return;
+      const k = e.key.toLowerCase();
+      if (k === ' ' || k === 'k') playPause();
+      else if (k === 'arrowleft' || k === 'j') seekBy(-(k === 'j' ? 10 : prefs.seekStep) * 1000);
+      else if (k === 'arrowright' || k === 'l') seekBy((k === 'l' ? 10 : prefs.seekStep) * 1000);
+      else if (k === 'arrowup' || k === 'arrowdown') {
+        volume.current = setVolume(getVolume() + (k === 'arrowup' ? 0.1 : -0.1));
+        flashHud({ kind: 'volume', value: volume.current }, 600);
+      } else if (k === 'm') cycleMode();
+      else if (k === 'c') {
+        if (prefs.mode === 'off') setMode('memc');
+        setCompare((c) => !c);
+      } else if (k === 'v') setVectors((v) => !v);
+      else if (k === 'f') toggleFullscreen();
+      else return;
+      e.preventDefault();
+      poke();
+    };
+  });
+  useEffect(() => {
+    if (!isWeb) return;
+    const onKey = (e: KeyboardEvent) => keys.current(e);
+    let last = 0;
+    const onMove = () => {
+      const now = Date.now();
+      if (now - last > 400) {
+        last = now;
+        poke();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, [poke]);
+
   // ---- the picture's on-screen rectangle (for the split handle)
   const videoW = info?.width || Number(params.w) || 16;
   const videoH = info?.height || Number(params.h) || 9;
@@ -230,7 +286,7 @@ export default function PlayerScreen() {
         <ThemedText color={Screen.textDim} style={{ textAlign: 'center', maxWidth: 420 }}>
           {fatal}
         </ThemedText>
-        <Button label="Back" onPress={() => router.back()} />
+        <Button label="Back" onPress={goBack} />
       </View>
     );
   }
@@ -238,7 +294,7 @@ export default function PlayerScreen() {
   return (
     <View style={styles.root}>
       <StatusBar hidden />
-      <NavigationBar hidden />
+      {isWeb ? null : <NavigationBar hidden />}
       <GlidePlayer
         ref={ref}
         style={StyleSheet.absoluteFill}
@@ -304,8 +360,15 @@ export default function PlayerScreen() {
                     setHud({ kind: 'seek', label: formatOffset(offset), detail: formatTime(target) });
                   }
                 }}
-                getBrightness={() => brightness.current ?? 0.5}
+                getBrightness={() => (isWeb ? (volume.current = getVolume()) : (brightness.current ?? 0.5))}
                 onBrightness={(v, done) => {
+                  // Browsers can't change screen brightness: the left side controls volume too.
+                  if (isWeb) {
+                    volume.current = setVolume(v);
+                    if (done) flashHud({ kind: 'volume', value: volume.current }, 600);
+                    else setHud({ kind: 'volume', value: volume.current });
+                    return;
+                  }
                   brightness.current = v;
                   void Brightness.setBrightnessAsync(Math.max(0.01, v)).catch(() => {});
                   if (done) flashHud({ kind: 'brightness', value: v }, 600);
@@ -339,7 +402,7 @@ export default function PlayerScreen() {
                   resizeMode={resizeMode}
                   seekStep={prefs.seekStep}
                   rateLabel={smoothingAvailable ? rateLabel : ''}
-                  onBack={() => router.back()}
+                  onBack={goBack}
                   onPlayPause={() => {
                     playPause();
                     poke();
@@ -365,12 +428,13 @@ export default function PlayerScreen() {
                   onOpenTracks={() => setSheet('tracks')}
                   onOpenSpeed={() => setSheet('speed')}
                   onCycleResize={cycleResize}
-                  onRotate={() => applyOrientation(!(landscape ?? width > height))}
+                  onRotate={isWeb ? undefined : () => applyOrientation(!(landscape ?? width > height))}
+                  onFullscreen={isWeb ? toggleFullscreen : undefined}
                   onLock={() => {
                     setLocked(true);
                     setControls(false);
                   }}
-                  onPip={() => void enterPip()}
+                  onPip={isWeb ? undefined : () => void enterPip()}
                 />
               ) : null}
             </>
@@ -397,7 +461,7 @@ export default function PlayerScreen() {
           ) : null}
 
           {prefs.showStats && stats ? (
-            <View pointerEvents="none" style={[styles.stats, { top: insets.top + (showControls ? 64 : 10), left: insets.left + 12 }]}>
+            <View pointerEvents="none" style={[styles.stats, { bottom: insets.bottom + (showControls ? 96 : 12), left: insets.left + 12 }]}>
               <ThemedText font="mono" color={Screen.text} style={styles.statsText}>
                 {`${formatFps(stats.inputFps)} → ${Math.round(stats.outputFps)} fps · ${Math.round(stats.generatedFps)} new/s · ${Math.round(stats.displayHz)} Hz`}
               </ThemedText>

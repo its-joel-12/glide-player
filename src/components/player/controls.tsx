@@ -55,9 +55,13 @@ export type ControlsProps = {
   onOpenTracks: () => void;
   onOpenSpeed: () => void;
   onCycleResize: () => void;
-  onRotate: () => void;
+  /** Android: turn the picture sideways. */
+  onRotate?: () => void;
+  /** Web: browser full screen. */
+  onFullscreen?: () => void;
   onLock: () => void;
-  onPip: () => void;
+  /** Android: picture-in-picture. */
+  onPip?: () => void;
 };
 
 export function PlayerControls(p: ControlsProps) {
@@ -126,9 +130,13 @@ export function PlayerControls(p: ControlsProps) {
               </ThemedText>
             </Pressable>
             <Btn icon={resizeIcon} label={`Picture size: ${p.resizeMode}`} onPress={p.onCycleResize} />
-            <Btn icon={{ ios: 'rotate.right', md: 'screen_rotation' }} label="Rotate" onPress={p.onRotate} />
-            <Btn icon={{ ios: 'pip.enter', md: 'picture_in_picture_alt' }} label="Picture-in-picture" onPress={p.onPip} />
-            <Btn icon={{ ios: 'lock.open', md: 'lock_open' }} label="Lock controls" onPress={p.onLock} />
+            {p.onRotate ? <Btn icon={{ ios: 'rotate.right', md: 'screen_rotation' }} label="Rotate" onPress={p.onRotate} /> : null}
+            {p.onPip ? <Btn icon={{ ios: 'pip.enter', md: 'picture_in_picture_alt' }} label="Picture-in-picture" onPress={p.onPip} /> : null}
+            {p.onFullscreen ? (
+              <Btn icon={{ ios: 'arrow.up.left.and.arrow.down.right', md: 'fullscreen' }} label="Full screen" onPress={p.onFullscreen} />
+            ) : (
+              <Btn icon={{ ios: 'lock.open', md: 'lock_open' }} label="Lock controls" onPress={p.onLock} />
+            )}
           </View>
         </View>
         <SeekBar positionMs={p.positionMs} durationMs={p.durationMs} bufferedMs={p.bufferedMs} onScrub={p.onScrub} onScrubEnd={p.onScrubEnd} />

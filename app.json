@@ -25,7 +25,11 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "name": "Glide",
+      "shortName": "Glide",
+      "themeColor": "#0E1114",
+      "backgroundColor": "#0E1114"
     },
     "plugins": [
       "expo-router",

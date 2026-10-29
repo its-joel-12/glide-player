@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { getDisplayInfo } from 'glide-engine';
 import { useMemo, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/button';
@@ -12,6 +12,8 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { SeekStepOptions } from '@/lib/settings-schema';
+
+const isWeb = Platform.OS === 'web';
 
 function Group({ title, children }: { title: string; children: ReactNode }) {
   const theme = useTheme();
@@ -86,7 +88,11 @@ export default function SettingsScreen() {
               onChange={(v) => setPreference('mode', v)}
             />
           </Field>
-          <Field label="Frame rate" detail={`Auto matches your screen’s fastest refresh rate (${maxHz} Hz; this screen offers ${rates} Hz). If videos look capped at 60, set the phone’s screen refresh rate to High.`}>
+          <Field label="Frame rate" detail={
+              isWeb
+                ? `Auto matches this screen’s refresh rate (${maxHz} Hz, measured by the browser).`
+                : `Auto matches your screen’s fastest refresh rate (${maxHz} Hz; this screen offers ${rates} Hz). If videos look capped at 60, set the phone’s screen refresh rate to High.`
+            }>
             <Segmented options={fpsOptions} value={fpsOptions.some((o) => o.value === prefs.targetFps) ? prefs.targetFps : 0} onChange={(v) => setPreference('targetFps', v)} dense />
           </Field>
           <Field label="Analysis" detail="Detailed follows small, fast motion better but uses more battery.">
@@ -106,9 +112,18 @@ export default function SettingsScreen() {
 
         <Group title="Playback">
           <Toggle label="Continue where I left off" value={prefs.resume} onChange={(v) => setPreference('resume', v)} />
-          <Toggle label="Turn sideways for wide videos" value={prefs.autoRotate} onChange={(v) => setPreference('autoRotate', v)} />
-          <Toggle label="Picture-in-picture" detail="Keeps the video in a small window when you leave the app." value={prefs.pip} onChange={(v) => setPreference('pip', v)} />
-          <Toggle label="Play sound in the background" detail="When picture-in-picture is off, keeps the sound going with lock-screen controls." value={prefs.backgroundAudio} onChange={(v) => setPreference('backgroundAudio', v)} />
+          {isWeb ? null : (
+            <>
+              <Toggle label="Turn sideways for wide videos" value={prefs.autoRotate} onChange={(v) => setPreference('autoRotate', v)} />
+              <Toggle label="Picture-in-picture" detail="Keeps the video in a small window when you leave the app." value={prefs.pip} onChange={(v) => setPreference('pip', v)} />
+              <Toggle
+                label="Play sound in the background"
+                detail="When picture-in-picture is off, keeps the sound going with lock-screen controls."
+                value={prefs.backgroundAudio}
+                onChange={(v) => setPreference('backgroundAudio', v)}
+              />
+            </>
+          )}
           <Field label="Double-tap to skip">
             <Segmented options={SeekStepOptions.map((s) => ({ value: s, label: `${s} s` }))} value={prefs.seekStep} onChange={(v) => setPreference('seekStep', v)} dense />
           </Field>
@@ -134,7 +149,8 @@ export default function SettingsScreen() {
             <ThemedText>Glide {Constants.expoConfig?.version ?? ''}</ThemedText>
             <ThemedText type="caption" themeColor="textSecondary">
               MEMC (motion estimation, motion compensation) finds how each block of the picture moves between two frames and draws new
-              frames along those paths. Netflix, Prime Video and YouTube protect their streams, so Glide plays files on your phone.
+              frames along those paths. Netflix, Prime Video and YouTube protect their streams, so Glide plays your own video files.
+              {isWeb ? ' Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare · V motion vectors · F full screen.' : ''}
             </ThemedText>
           </View>
         </Group>

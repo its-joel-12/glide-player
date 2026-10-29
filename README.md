@@ -1,6 +1,6 @@
 # Glide
 
-A video player for Android, built with React Native (Expo), that smooths motion like the
+A video player for Android and the web, built with React Native (Expo), that smooths motion like the
 **MEMC** setting on phones and TVs, and saves smooth or slow-motion copies like an
 **optical-flow retime** in a video editor.
 
@@ -25,6 +25,29 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
   for volume, double-tap to skip, pinch to fill the screen; subtitles (built-in tracks or .srt/.vtt/.ass
   files), audio track choice, speed, picture-in-picture, background sound with lock-screen controls,
   lock controls, rotate.
+
+## Web version
+
+The same app runs in a browser (Chrome, Edge, Firefox, Safari, including on iPhone and Android).
+The web player uses the same motion engine, ported to WebGL 2 with the same shaders:
+
+- Open a video file (button or drag and drop; the file stays on the device) or watch the built-in
+  24 fps demo clip.
+- Off / Blend / MEMC, split compare, motion vectors, smooth slow motion, subtitle files
+  (.srt, .vtt, .ass), speed, full screen, swipe gestures on phones.
+- Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare ·
+  V motion vectors · F full screen.
+- Not on the web: the phone's video library, MKV/HEVC files the browser can't decode,
+  picture-in-picture, and saving smooth copies (Android app only).
+
+Try it locally with `npm run web`; build it with `npm run build:web` (output in `dist/`).
+
+### Deploy to Netlify
+
+`netlify.toml` is set up like the Expense Tracker: Netlify runs `npx expo export --platform web`
+and publishes `dist`. In Netlify: *Add new site → Import an existing project → GitHub →
+glide-player*. Every push to `main` then publishes a new version. On an iPhone, open the site in
+Safari and choose *Share → Add to Home Screen* to get a full-screen app icon.
 
 ## How the smoothing works
 
@@ -52,7 +75,7 @@ the real frame than plain frame repeat or blending; the export analysis adds abo
 | `src/app/` | Screens (Expo Router): library, folder, player, smooth copy, settings |
 | `src/components/` | UI pieces; `player/` has controls, gestures, seek bar, sheets |
 | `src/lib/` | Library access, thumbnails, resume positions, settings, frame-timing maths |
-| `modules/glide-engine/` | The native engine (Kotlin) and its TypeScript API |
+| `modules/glide-engine/` | The engine: Android (Kotlin, `android/`), web (WebGL 2, `src/web/`), and the shared TypeScript API |
 | `plugins/with-glide-activity.js` | Manifest flags for picture-in-picture |
 | `tests/app.test.js` | Logic tests (`npm test`) |
 
@@ -86,6 +109,8 @@ The phone opens the development build and reloads as you edit JavaScript. After 
 | `npm run build:dev` | Development app (APK) on EAS |
 | `npm run build:apk` | Shareable APK on EAS |
 | `npm run build:apk:local` | APK on this laptop into `builds/` (add `-- --install` to put it on the USB phone) |
+| `npm run web` | Run the web version on this laptop |
+| `npm run build:web` | Build the web version into `dist/` (what Netlify runs) |
 
 Local builds need Android Studio's SDK and Java 17+. On Windows, React Native's C++ build needs a
 short project path or Windows long paths turned on; the script explains both.
@@ -103,6 +128,7 @@ short project path or Windows long paths turned on; the script explains both.
 - [x] Real-time MEMC playback, split compare, motion vectors
 - [x] Optical-flow export (smooth / slow motion)
 - [x] Library, resume, gestures, subtitles, PiP, background audio
+- [x] Web version (WebGL 2), deployable to Netlify
 - [ ] Per-pixel (dense) flow refinement for saved copies
 - [ ] Neural interpolation (RIFE-style, like DaVinci Resolve's Speed Warp) for saved copies
 - [ ] Super-resolution (sharper upscaling of low-resolution videos)
