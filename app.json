@@ -1,0 +1,69 @@
+{
+  "expo": {
+    "name": "Glide",
+    "slug": "glide-player",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "glide",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#0E1114",
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0E1114",
+        "foregroundImage": "./assets/images/android-icon-foreground.png",
+        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.joeloliveira.glide",
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_VIDEO"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F2F4F6",
+          "image": "./assets/images/splash-icon.png",
+          "imageWidth": 76,
+          "dark": {
+            "backgroundColor": "#0E1114"
+          }
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "granularPermissions": [
+            "video"
+          ],
+          "isAccessMediaLocationEnabled": false,
+          "photosPermission": "Allow Glide to show and play the videos on your phone.",
+          "savePhotosPermission": "Allow Glide to save smooth and slow-motion copies of your videos."
+        }
+      ],
+      "expo-sharing",
+      "./plugins/with-glide-activity.js"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "054382f2-0be1-4448-82b9-6dfe5dcc4596"
+      }
+    },
+    "owner": "its-joel"
+  }
+}
