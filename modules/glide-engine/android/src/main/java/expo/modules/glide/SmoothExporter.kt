@@ -40,6 +40,7 @@ import java.io.File
 @OptIn(UnstableApi::class)
 internal class SmoothExporter(private val context: Context, private val onProgress: (Int) -> Unit) {
   private var transformer: Transformer? = null
+  private var remuxer: Remuxer? = null
   private var promise: Promise? = null
   private var output: File? = null
   private var displayName = "glide.mp4"
@@ -54,7 +55,7 @@ internal class SmoothExporter(private val context: Context, private val onProgre
   }
 
   fun start(opts: ExportOptions, promise: Promise) {
-    if (transformer != null) {
+    if (transformer != null || remuxer != null) {
       promise.reject("BUSY", "A video is already being saved. Wait for it to finish or cancel it.", null)
       return
     }
@@ -101,7 +102,11 @@ internal class SmoothExporter(private val context: Context, private val onProgre
     run(t, item.build(), out, promise)
   }
 
-  /** Rewrites the video into an MP4 with a seek index (no effects, streams copied when possible). */
+  /**
+   * Rewrites the video into an MP4 with a seek index, keeping all audio tracks and the text
+   * subtitles ([Remuxer]). If the picture's format can't go into MP4 as it is, falls back to
+   * Transformer, which re-encodes it (one audio track, no subtitles).
+   */
   private fun startRemux(opts: ExportOptions, promise: Promise) {
     val uri = Uri.parse(opts.uri)
     // Peak use: the new file in the cache plus its copy in the gallery, each about the original's size.
@@ -114,6 +119,75 @@ internal class SmoothExporter(private val context: Context, private val onProgre
     }
     displayName = "${baseName(opts.title)}-seekable.mp4"
     dropCacheCopy = true
+    val out = outputFile(displayName)
+    val subtitleBase = "${System.currentTimeMillis()}-${displayName.removeSuffix(".mp4")}"
+    val r = Remuxer(context, uri, out, File(context.filesDir, "subtitles"), subtitleBase, opts.keepAudio) { p -> handler.post { onProgress(p) } } // called on the worker thread
+    remuxer = r
+    this.promise = promise
+    this.output = out
+    onProgress(0)
+    Thread {
+      try {
+        val result = r.run()
+        handler.post { if (remuxer === r) completeRemux(out, result) }
+      } catch (e: UnsupportedVideoException) {
+        out.delete()
+        handler.post {
+          if (remuxer !== r) return@post
+          remuxer = null
+          this.promise = null
+          this.output = null
+          startTransformerRemux(opts, uri, promise)
+        }
+      } catch (e: Throwable) {
+        out.delete()
+        handler.post {
+          if (remuxer !== r) return@post
+          remuxer = null
+          this.promise = null
+          this.output = null
+          if (e is RemuxCancelled) promise.reject("CANCELLED", "Saving was cancelled.", null)
+          else promise.reject("EXPORT_FAILED", e.message ?: e.javaClass.simpleName, e)
+        }
+      }
+    }.apply { name = "glide-remux" }.start()
+  }
+
+  private fun completeRemux(file: File, result: RemuxResult) {
+    val p = promise ?: return
+    val name = displayName
+    remuxer = null
+    promise = null
+    output = null
+    onProgress(100)
+    Thread {
+      val bytes = file.length()
+      val saved = saveToGallery(file, name)
+      if (saved != null) file.delete()
+      p.resolve(
+        mapOf(
+          "uri" to (saved?.toString() ?: Uri.fromFile(file).toString()),
+          "fileUri" to (if (saved != null) "" else Uri.fromFile(file).toString()),
+          "savedToGallery" to (saved != null),
+          "fileSizeBytes" to bytes.toDouble(),
+          "name" to name,
+          "subtitles" to result.subtitles.map {
+            mapOf(
+              "uri" to Uri.fromFile(it.file).toString(),
+              "label" to it.label,
+              "language" to (it.language ?: ""),
+              "mimeType" to it.mimeType,
+              "selected" to it.selected,
+            )
+          },
+          "notes" to result.notes,
+        )
+      )
+    }.start()
+  }
+
+  /** Re-encoding fallback (picture formats MP4 can't hold as they are). */
+  private fun startTransformerRemux(opts: ExportOptions, uri: Uri, promise: Promise) {
     val item = EditedMediaItem.Builder(MediaItem.fromUri(uri))
     if (!opts.keepAudio) item.setRemoveAudio(true)
     // No effects and no forced codec: Transformer copies streams that MP4 can hold and converts the rest.
@@ -182,6 +256,10 @@ internal class SmoothExporter(private val context: Context, private val onProgre
             "savedToGallery" to (saved != null),
             "fileSizeBytes" to bytes.toDouble(),
             "name" to name,
+            "notes" to (
+              if (dropCache) listOf("The picture's format can't go into MP4 as it is, so it was converted. Only the main audio track was kept, and subtitles weren't copied.")
+              else emptyList()
+            ),
           )
         )
       }.start()
@@ -196,6 +274,11 @@ internal class SmoothExporter(private val context: Context, private val onProgre
   }
 
   fun cancel() {
+    remuxer?.let { r ->
+      // The worker thread stops at its next sample and rejects the promise.
+      r.cancelled = true
+      return
+    }
     val t = transformer ?: return
     val p = promise
     t.cancel()

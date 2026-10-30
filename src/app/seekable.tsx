@@ -12,6 +12,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatBytes } from '@/lib/format';
 import { openPlayer } from '@/lib/navigation';
+import { setSidecars } from '@/lib/sidecars';
 
 type Phase = { state: 'setup' } | { state: 'running'; progress: number } | { state: 'done'; result: ExportResult } | { state: 'error'; message: string };
 
@@ -50,6 +51,11 @@ export default function SeekableCopyScreen() {
     setPhase({ state: 'running', progress: 0 });
     try {
       const result = await exportSmooth({ uri: params.uri, title, remux: true, keepAudio, fps: 30, slowMotion: 1, quality: 'balanced', width, height });
+      // MP4 can't hold the subtitles: they were saved as files, which the player loads with the copy.
+      setSidecars(
+        result.uri,
+        (result.subtitles ?? []).map((s) => ({ ...s, language: s.language || undefined })),
+      );
       setPhase({ state: 'done', result });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -88,9 +94,9 @@ export default function SeekableCopyScreen() {
               which always has one.
             </ThemedText>
             <ThemedText themeColor="textSecondary">
-              The picture is copied as it is (no quality loss) when MP4 can hold it; otherwise it is converted. The copy keeps the main audio
-              track. Built-in subtitles and extra audio tracks aren’t copied: load a subtitle file in the player if you need them. The original
-              isn’t changed.
+              The picture is copied as it is (no quality loss). Every audio track is kept: ones MP4 can hold are copied, others (like Dolby
+              Digital) are converted to AAC when this phone can decode them. Text subtitles (SRT, ASS, WebVTT) are kept too and load
+              automatically when you play the copy in Glide; picture-based ones (PGS, VobSub) can’t be. The original isn’t changed.
             </ThemedText>
             <View style={styles.toggle}>
               <ThemedText style={{ flex: 1 }}>Keep the sound</ThemedText>
@@ -129,6 +135,16 @@ export default function SeekableCopyScreen() {
               {phase.result.savedToGallery ? `In your gallery under Movies/Glide as ${phase.result.name}` : phase.result.name} ·{' '}
               {formatBytes(phase.result.fileSizeBytes)}. You can skip around in it and pick up where you stopped.
             </ThemedText>
+            {phase.result.subtitles?.length ? (
+              <ThemedText themeColor="textSecondary">
+                Subtitles kept: {phase.result.subtitles.map((s) => s.label).join(', ')}. They load automatically when you play the copy in Glide.
+              </ThemedText>
+            ) : null}
+            {phase.result.notes?.map((n) => (
+              <ThemedText key={n} type="small" themeColor="textSecondary">
+                • {n}
+              </ThemedText>
+            ))}
             <Button label="Play the copy" icon={{ ios: 'play.fill', md: 'play_arrow' }} onPress={() => playCopy(phase.result)} />
           </View>
         )}

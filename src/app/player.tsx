@@ -33,6 +33,7 @@ import { Screen } from '@/constants/theme';
 import { containerLabel, formatFps, formatOffset, formatTime, seekTarget } from '@/lib/format';
 import { clamp } from '@/lib/gestures';
 import { openSeekableCopy, pickSubtitleFile } from '@/lib/navigation';
+import { getSidecars } from '@/lib/sidecars';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResume, getResume, saveResume, startPosition } from '@/lib/resume';
 import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS, type SmoothingMode } from '@/lib/settings-schema';
@@ -64,7 +65,8 @@ export default function PlayerScreen() {
 
   const id = params.id || params.uri;
   const title = params.title || 'Video';
-  const [subtitles, setSubtitles] = useState<SubtitleSource[]>([]);
+  // Subtitle files saved with this video (e.g. from a seekable copy), then any the user adds.
+  const [subtitles, setSubtitles] = useState<SubtitleSource[]>(() => getSidecars(params.uri));
   const startAt = useMemo(() => (prefs.resume && !params.fromStart ? startPosition(getResume(id)) : 0), [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const source = useMemo<VideoSource>(() => ({ uri: params.uri, title, startPositionMs: startAt, subtitles }), [params.uri, title, startAt, subtitles]);
 
@@ -246,7 +248,8 @@ export default function PlayerScreen() {
     setSheet(null);
     const f = await pickSubtitleFile();
     if (!f) return;
-    setSubtitles((s) => [...s, { uri: f.uri, label: f.name }]);
+    // The file just added is the one switched on.
+    setSubtitles((s) => [...s.map((x) => ({ ...x, selected: false })), { uri: f.uri, label: f.name, selected: true }]);
     showToast(`Added subtitles: ${f.name}`);
   };
 

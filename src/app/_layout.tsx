@@ -17,10 +17,12 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { loadPreferences, usePreferences } from '@/lib/preferences';
 import { loadResume } from '@/lib/resume';
+import { loadSidecars } from '@/lib/sidecars';
 
 void SplashScreen.preventAutoHideAsync();
 void loadPreferences();
 void loadResume();
+void loadSidecars();
 
 export default function RootLayout() {
   const scheme = useColorScheme();

@@ -21,8 +21,9 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
   *Movies/Glide*; the original isn't changed.
 - **Seekable copy:** some files (often MKVs and recordings) have no seek index, so no player can jump
   around in them or resume them. The player says so and shows a *Make seekable* button that writes an
-  MP4 copy to *Movies/Glide*, copying the streams without re-encoding when MP4 can hold them (main
-  audio track only; built-in subtitles aren't copied).
+  MP4 copy to *Movies/Glide*. The picture is copied without re-encoding, every audio track is kept
+  (converted to AAC when MP4 can't hold it and the phone can decode it), and text subtitles (SRT/ASS/
+  WebVTT) are saved alongside and load automatically when the copy plays in Glide.
 - **Library:** all videos newest first, folders, thumbnails, durations, *Continue watching* with
   resume positions; open any other file from the folder button.
 - **Player essentials:** swipe sideways to seek, up/down on the left for brightness and on the right

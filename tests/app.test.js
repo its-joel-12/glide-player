@@ -115,6 +115,13 @@ eq(f.containerLabel('video/x-something'), 'SOMETHING', 'unknown container label'
 eq(f.containerLabel(''), '', 'no container');
 eq(r.startPosition({ positionMs: 6_000_000, durationMs: 8_400_000, updatedAt: 0, title: '', uri: '' }), 5_998_000, 'resume works for a 2h20m video');
 
+// subtitle files saved with a seekable copy are found whichever way the gallery names it
+const mk = require('../src/lib/media-key.ts');
+eq(mk.sidecarKey('content://media/external_primary/video/media/42'), 'media:42', 'gallery uri → id key');
+eq(mk.sidecarKey('content://media/external/video/media/42'), 'media:42', 'same video, other volume name');
+eq(mk.sidecarKey('42'), 'media:42', 'bare id');
+eq(mk.sidecarKey('file:///x/y.mp4'), 'file:///x/y.mp4', 'other uris unchanged');
+
 // video grid helpers (the library list)
 const grid = require('../src/lib/grid.ts');
 const vids = (...ids) => ids.map((id) => ({ id }));

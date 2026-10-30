@@ -303,6 +303,7 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
     loadedSent = false
     if (!sameVideo && !PlayerHolder.effectsEnabled) switchPlayer(withEffects = true)
 
+    val anyChosen = source.subtitles.any { it.selected != null }
     val item = MediaItem.Builder()
       .setUri(Uri.parse(source.uri))
       .setMediaId(source.uri)
@@ -314,7 +315,9 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
             .setLanguage(s.language)
             .setLabel(s.label)
             // The file added last is switched on; earlier ones stay in the list.
-            .setSelectionFlags(if (i == source.subtitles.lastIndex) C.SELECTION_FLAG_DEFAULT else 0)
+            .setSelectionFlags(
+              if (if (anyChosen) s.selected == true else i == source.subtitles.lastIndex) C.SELECTION_FLAG_DEFAULT else 0
+            )
             .build()
         }
       )

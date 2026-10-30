@@ -11,6 +11,8 @@ class SubtitleRecord : Record {
   @Field val mimeType: String? = null
   @Field val language: String? = null
   @Field val label: String? = null
+  /** Switch this one on at the start; when no file says, the last one added is switched on. */
+  @Field val selected: Boolean? = null
 }
 
 class SourceRecord : Record {

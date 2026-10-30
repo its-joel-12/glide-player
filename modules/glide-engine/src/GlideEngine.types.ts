@@ -27,7 +27,14 @@ export type SubtitleStyle = {
   useFileStyles: boolean;
 };
 
-export type SubtitleSource = { uri: string; mimeType?: string; language?: string; label?: string };
+export type SubtitleSource = {
+  uri: string;
+  mimeType?: string;
+  language?: string;
+  label?: string;
+  /** Switch this one on at the start (otherwise the last file added is switched on). */
+  selected?: boolean;
+};
 
 export type VideoSource = {
   /** file://, content:// or https:// */
@@ -148,5 +155,9 @@ export type ExportResult = {
   savedToGallery: boolean;
   fileSizeBytes: number;
   name: string;
+  /** Seekable copies: text subtitles saved as files (MP4 can't hold them), loaded with the copy. */
+  subtitles?: SubtitleSource[];
+  /** Seekable copies: tracks that couldn't be kept, in plain words. */
+  notes?: string[];
 };
 export type DisplayInfo = { refreshRates: number[]; maxRefreshRate: number; currentRefreshRate: number };

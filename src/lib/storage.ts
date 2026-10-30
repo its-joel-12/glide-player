@@ -4,6 +4,7 @@ export const StorageKeys = {
   preferences: 'glide.preferences.v1',
   resume: 'glide.resume.v1',
   thumbnails: 'glide.thumbnails.v1',
+  sidecars: 'glide.sidecars.v1',
 } as const;
 
 export async function loadJSON<T>(key: string, fallback: T): Promise<T> {
