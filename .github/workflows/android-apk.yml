@@ -1,0 +1,94 @@
+# Builds the Glide Android APK on every push to main (and on demand from the Actions tab), signed with
+# the same key as EAS, and publishes it as a GitHub release you can download on the phone.
+#
+# Needs these repository secrets (Settings → Secrets and variables → Actions), set them with
+# `npm run ci:secrets` (see README → "Builds on GitHub"):
+#   KEYSTORE_BASE64    the keystore file (credentials/android/keystore.jks), base64-encoded
+#   KEYSTORE_PASSWORD  KEY_ALIAS  KEY_PASSWORD   from credentials.json
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'public/**', 'netlify.toml', '.vscode/**', 'tests/**']
+  workflow_dispatch:
+
+# a newer push replaces a build that's still running
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      # caches Gradle's downloads between builds
+      - uses: gradle/actions/setup-gradle@v6
+
+      - run: npm ci
+
+      # The same checks as before a commit: types, lint, and the tests (incl. Android/web shader match).
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+
+      - name: Signing key (from secrets; never stored in the repo)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then echo "::error::KEYSTORE_BASE64 secret is missing (run npm run ci:secrets on your PC)"; exit 1; fi
+          mkdir -p credentials/android
+          echo "$KEYSTORE_BASE64" | base64 -d > credentials/android/keystore.jks
+          node -e "require('fs').writeFileSync('credentials.json', JSON.stringify({ android: { keystore: {
+            keystorePath: 'credentials/android/keystore.jks',
+            keystorePassword: process.env.KEYSTORE_PASSWORD,
+            keyAlias: process.env.KEY_ALIAS,
+            keyPassword: process.env.KEY_PASSWORD } } }))"
+
+      - name: Build
+        run: npm run build:apk:local
+
+      - name: Find the APK
+        id: apk
+        run: echo "path=$(ls builds/*.apk | head -n 1)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: glide-apk
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 14
+
+      - name: Publish as a release (keeps the last 10)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ github.event.head_commit.message || 'Built from the Actions tab' }}
+          APK: ${{ steps.apk.outputs.path }}
+        run: |
+          tag="build-${{ github.run_number }}"
+          gh release create "$tag" "$APK" --title "Glide build ${{ github.run_number }}" --notes "$NOTES" --target "${{ github.sha }}"
+          gh release list --limit 100 --json tagName --jq '.[10:][].tagName' | while read -r old; do
+            gh release delete "$old" --cleanup-tag --yes
+          done
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f credentials.json credentials/android/keystore.jks
