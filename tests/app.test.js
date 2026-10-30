@@ -122,6 +122,17 @@ eq(mk.sidecarKey('content://media/external/video/media/42'), 'media:42', 'same v
 eq(mk.sidecarKey('42'), 'media:42', 'bare id');
 eq(mk.sidecarKey('file:///x/y.mp4'), 'file:///x/y.mp4', 'other uris unchanged');
 
+// press and hold for fast playback
+eq(g.holdSpeedFor(2, 0), 2, 'hold starts at the chosen speed');
+eq(g.holdSpeedFor(2, 80), 3, 'slide right → faster');
+eq(g.holdSpeedFor(2, -80), 1.5, 'slide left → slower');
+eq(g.holdSpeedFor(2, 500), 3, 'never above 3×');
+eq(g.holdSpeedFor(1.5, -500), 1.5, 'never below 1.5×');
+eq(g.holdSpeedFor(2, 30), 2, 'small slides keep the speed');
+eq(s.normalizePreferences({}).holdSpeed, 2, 'hold speed 2× by default');
+eq(s.normalizePreferences({ holdSpeed: 5 }).holdSpeed, 2, 'bad hold speed → 2×');
+eq(s.normalizePreferences({ holdToSpeed: false }).holdToSpeed, false, 'hold can be turned off');
+
 // video grid helpers (the library list)
 const grid = require('../src/lib/grid.ts');
 const vids = (...ids) => ids.map((id) => ({ id }));

@@ -74,6 +74,9 @@ export default function PlayerScreen() {
   const [ended, setEnded] = useState(false);
   const [buffering, setBuffering] = useState(true);
   const [rate, setRate] = useState(1);
+  // Press-and-hold fast playback: the speed while a finger is held on the video (null = not holding).
+  const [holdRate, setHoldRate] = useState<number | null>(null);
+  const playRate = holdRate ?? rate;
   const [compare, setCompare] = useState(false);
   const [split, setSplit] = useState(0.5);
   const [vectors, setVectors] = useState(false);
@@ -240,6 +243,16 @@ export default function PlayerScreen() {
     setPreference('subtitleDelayMs', subtitleDelayMs);
     showToast(`Every video now starts with audio ${formatDelay(audioDelayMs)}, subtitles ${formatDelay(subtitleDelayMs)}.`);
   };
+  const onHoldSpeed = (speed: number | null) => {
+    if (speed == null) {
+      setHoldRate(null);
+      return;
+    }
+    // Only while playing: holding a paused video does nothing.
+    if (holdRate == null && (paused || ended || buffering)) return;
+    if (holdRate == null) setControls(false);
+    setHoldRate(speed);
+  };
   const toggleStats = () => {
     setPreference('showStats', !prefs.showStats);
     flashHud({ kind: 'text', label: prefs.showStats ? 'Frame rates hidden' : 'Frame rates shown' }, 800);
@@ -315,7 +328,7 @@ export default function PlayerScreen() {
 
   // ---- labels
   const sourceFps = stats?.sourceFps || info?.frameRate || 0;
-  const outFps = prefs.mode === 'off' ? sourceFps * rate : prefs.targetFps || display.maxRefreshRate;
+  const outFps = prefs.mode === 'off' ? sourceFps * playRate : prefs.targetFps || display.maxRefreshRate;
   const rateLabel = sourceFps > 0 ? `${formatFps(sourceFps)}→${Math.round(outFps)}` : '';
   const shownPosition = scrubMs ?? pos.positionMs;
 
@@ -344,7 +357,7 @@ export default function PlayerScreen() {
         style={StyleSheet.absoluteFill}
         source={source}
         paused={paused}
-        rate={rate}
+        rate={playRate}
         mode={prefs.mode}
         quality={prefs.quality}
         targetFps={prefs.targetFps}
@@ -430,6 +443,8 @@ export default function PlayerScreen() {
                   if (done) flashHud({ kind: 'volume', value: volume.current }, 600);
                   else setHud({ kind: 'volume', value: volume.current });
                 }}
+                onHoldSpeed={prefs.holdToSpeed ? onHoldSpeed : undefined}
+                holdSpeed={prefs.holdSpeed}
                 onResize={(m) => {
                   setResizeMode(m);
                   flashHud({ kind: 'text', label: RESIZE_LABEL[m] }, 900);
@@ -527,6 +542,18 @@ export default function PlayerScreen() {
                   {line}
                 </ThemedText>
               ))}
+            </View>
+          ) : null}
+
+          {holdRate != null ? (
+            <View pointerEvents="none" style={[styles.holdPill, { top: insets.top + 14 }]} accessibilityLiveRegion="polite">
+              <ThemedText type="smallBold" color={Screen.text}>
+                {`${holdRate}×`}
+              </ThemedText>
+              <Icon ios="forward.fill" md="fast_forward" size={18} color={Screen.text} />
+              <ThemedText type="small" color={Screen.textDim} style={{ fontSize: 12 }}>
+                slide ← → to change
+              </ThemedText>
             </View>
           ) : null}
 
@@ -630,5 +657,6 @@ const styles = StyleSheet.create({
   unlock: { position: 'absolute', width: 56, height: 56, borderRadius: 28, backgroundColor: Screen.scrim, alignItems: 'center', justifyContent: 'center' },
   stats: { position: 'absolute', backgroundColor: Screen.scrim, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 5, alignItems: 'flex-end' },
   statsText: { fontSize: 11.5 },
+  holdPill: { position: 'absolute', alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: Screen.scrim, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 7 },
   toast: { position: 'absolute', alignSelf: 'center', backgroundColor: Screen.scrim, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
 });

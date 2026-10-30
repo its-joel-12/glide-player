@@ -32,3 +32,15 @@ export function resizeForPinch(scale: number, current: 'fit' | 'fill' | 'zoom'):
   if (scale < 0.9) return 'fit';
   return current;
 }
+
+/** Speeds offered by press-and-hold fast playback; sliding sideways while holding moves between them. */
+export const HOLD_SPEEDS = [1.5, 2, 3] as const;
+/** Sideways distance (px) that moves one step through HOLD_SPEEDS. */
+export const HOLD_STEP_PX = 70;
+
+/** Speed while holding: the chosen one, moved one step per HOLD_STEP_PX slid right (faster) or left (slower). */
+export function holdSpeedFor(base: number, dx: number): number {
+  const start = Math.max(0, HOLD_SPEEDS.indexOf(base as (typeof HOLD_SPEEDS)[number]));
+  const i = clamp(start + Math.trunc(dx / HOLD_STEP_PX), 0, HOLD_SPEEDS.length - 1);
+  return HOLD_SPEEDS[i];
+}

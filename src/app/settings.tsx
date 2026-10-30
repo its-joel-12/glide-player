@@ -13,7 +13,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { setPreference, usePreferences } from '@/lib/preferences';
-import { AUDIO_DELAY_RANGE, SeekStepOptions, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS } from '@/lib/settings-schema';
+import { AUDIO_DELAY_RANGE, HoldSpeedOptions, SeekStepOptions, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS } from '@/lib/settings-schema';
 
 const isWeb = Platform.OS === 'web';
 
@@ -139,6 +139,17 @@ export default function SettingsScreen() {
               <Toggle label="Swipe for volume" detail="Up/down on the right half of the video." value={prefs.gestureVolume} onChange={(v) => setPreference('gestureVolume', v)} />
             </>
           )}
+          <Toggle
+            label="Press and hold for fast playback"
+            detail="Hold a finger on the video to play faster; let go for normal speed. Slide sideways while holding to change the speed."
+            value={prefs.holdToSpeed}
+            onChange={(v) => setPreference('holdToSpeed', v)}
+          />
+          {prefs.holdToSpeed ? (
+            <Field label="Hold speed">
+              <Segmented options={HoldSpeedOptions.map((s) => ({ value: s, label: `${s}×` }))} value={prefs.holdSpeed} onChange={(v) => setPreference('holdSpeed', v)} dense />
+            </Field>
+          ) : null}
           <Field label="Double-tap to skip">
             <Segmented options={SeekStepOptions.map((s) => ({ value: s, label: `${s} s` }))} value={prefs.seekStep} onChange={(v) => setPreference('seekStep', v)} dense />
           </Field>

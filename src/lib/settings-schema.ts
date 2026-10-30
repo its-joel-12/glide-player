@@ -30,6 +30,10 @@ export type Preferences = {
   gestureBrightness: boolean;
   /** Swipe up/down on the right half for volume. */
   gestureVolume: boolean;
+  /** Press and hold the video to play faster while the finger is down. */
+  holdToSpeed: boolean;
+  /** Speed for press-and-hold (1.5, 2 or 3). */
+  holdSpeed: number;
   subtitleStyle: SubtitleStyle;
   /** Audio delay every video starts with (ms; + = sound later). */
   audioDelayMs: number;
@@ -64,6 +68,8 @@ export const DefaultPreferences: Preferences = {
   autoRotate: true,
   gestureBrightness: true,
   gestureVolume: true,
+  holdToSpeed: true,
+  holdSpeed: 2,
   subtitleStyle: DefaultSubtitleStyle,
   audioDelayMs: 0,
   subtitleDelayMs: 0,
@@ -75,6 +81,7 @@ const bool = (value: unknown, fallback: boolean) => (typeof value === 'boolean' 
 
 export const TargetFpsOptions = [0, 60, 90, 120, 144] as const;
 export const SeekStepOptions = [5, 10, 15, 30] as const;
+export const HoldSpeedOptions = [1.5, 2, 3] as const;
 
 const hexColor = (value: unknown, fallback: string) => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : fallback);
 const num = (value: unknown, lo: number, hi: number, fallback: number) =>
@@ -136,6 +143,8 @@ export function normalizePreferences(saved: unknown): Preferences {
     autoRotate: bool(s.autoRotate, d.autoRotate),
     gestureBrightness: bool(s.gestureBrightness, d.gestureBrightness),
     gestureVolume: bool(s.gestureVolume, d.gestureVolume),
+    holdToSpeed: bool(s.holdToSpeed, d.holdToSpeed),
+    holdSpeed: (HoldSpeedOptions as readonly number[]).includes(s.holdSpeed as number) ? (s.holdSpeed as number) : d.holdSpeed,
     subtitleStyle: normalizeSubtitleStyle(s.subtitleStyle),
     audioDelayMs: clampDelay(s.audioDelayMs, AUDIO_DELAY_RANGE),
     subtitleDelayMs: clampDelay(s.subtitleDelayMs, SUBTITLE_DELAY_RANGE),
