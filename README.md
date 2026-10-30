@@ -135,6 +135,24 @@ The phone opens the development build and reloads as you edit JavaScript. After 
 Local builds need Android Studio's SDK and Java 17+. On Windows, React Native's C++ build needs a
 short project path or Windows long paths turned on; the script explains both.
 
+## Builds on GitHub
+
+Every push to `main` builds the APK on GitHub Actions (`.github/workflows/android-apk.yml`): it runs
+the typecheck, lint and tests, builds with `npm run build:apk:local`, signs with the same key as your
+EAS builds, and publishes it on the repo's **Releases** page (the last 10 are kept) so you can download
+it straight on the phone. You can also start it by hand: **Actions → Android APK → Run workflow**.
+
+One-time setup:
+
+1. Download the signing key: `npx eas-cli@latest credentials -p android` → *preview* profile →
+   (if there's no keystore yet) *Set up a new keystore* → *credentials.json: Upload/Download* →
+   *Download credentials from EAS to credentials.json*. This creates `credentials.json` and
+   `credentials/android/keystore.jks` (both git-ignored; keep a backup, the key can't be recreated).
+2. Put it into the repo's secrets: `npm run ci:secrets` (uses the GitHub CLI, `gh auth login` first), or
+   `npm run ci:secrets -- --print` and add the four values under **Settings → Secrets and variables →
+   Actions**.
+3. Push to `main`.
+
 ## Tips
 
 - If smoothing looks capped at 60 fps, set the phone's screen refresh rate to *High* (some phones

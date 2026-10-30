@@ -58,6 +58,7 @@
     "build:dev": "npx eas-cli@latest build --platform android --profile development",
     "build:apk": "npx eas-cli@latest build --platform android --profile preview",
     "build:apk:local": "node ./scripts/build-apk-local.js",
+    "ci:secrets": "node ./scripts/ci-secrets.js",
     "web": "expo start --web",
     "build:web": "expo export --platform web"
   },

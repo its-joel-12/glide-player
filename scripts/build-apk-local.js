@@ -88,11 +88,22 @@ function longPathsEnabled() {
   return /LongPathsEnabled\s+REG_DWORD\s+0x1\b/.test(r.stdout || '');
 }
 
+/**
+ * A user environment variable as saved in Windows (HKCU\Environment). Programs started before it was
+ * set (e.g. a long-running app that launches this script) don't see it in process.env.
+ */
+function userEnv(name) {
+  if (!isWin) return undefined;
+  const r = spawnSync('reg', ['query', 'HKCU\\Environment', '/v', name], { encoding: 'utf8', shell: true });
+  const m = new RegExp(`${name}\\s+REG_(?:EXPAND_)?SZ\\s+(.+)`).exec(r.stdout || '');
+  return m ? m[1].trim().replace(/%([^%]+)%/g, (_, v) => process.env[v] ?? `%${v}%`) : undefined;
+}
+
 function main() {
 
 // 1. Find the Android SDK and Java.
 const local = process.env.LOCALAPPDATA || '';
-const sdk = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT, local && path.join(local, 'Android', 'Sdk'), path.join(require('os').homedir(), 'Android', 'Sdk')]
+const sdk = [process.env.ANDROID_HOME, process.env.ANDROID_SDK_ROOT, userEnv('ANDROID_HOME'), userEnv('ANDROID_SDK_ROOT'), local && path.join(local, 'Android', 'Sdk'), path.join(require('os').homedir(), 'Android', 'Sdk')]
   .find((p) => exists(p) && exists(path.join(p, 'platforms')));
 if (!sdk) fail('Android SDK not found. Open Android Studio → More Actions → SDK Manager and install an Android SDK Platform, or set ANDROID_HOME.');
 // Gradle needs Java 17 or newer. Prefer Android Studio's own Java; skip older ones (e.g. a JAVA_HOME pointing at Java 8).
@@ -118,6 +129,16 @@ console.log(`Android SDK: ${sdk}\nJava:        ${java} (Java ${javaMajor(java)})
 
 // 2. Signing key from EAS (optional).
 const env = { ...process.env, ANDROID_HOME: sdk, JAVA_HOME: java, PATH: `${path.join(java, 'bin')}${path.delimiter}${process.env.PATH}` };
+// Gradle's own cache folder, when it was moved (e.g. to another drive) after this program started.
+const gradleHome = process.env.GRADLE_USER_HOME || userEnv('GRADLE_USER_HOME');
+if (gradleHome) env.GRADLE_USER_HOME = gradleHome;
+// Java opens an internal loopback channel through a file in the temp folder. Sandboxed launchers (such as
+// an app's built-in terminal) can block that ("Unable to establish loopback connection"): use a folder of Gradle's.
+if (isWin && !/unixdomain\.tmpdir/.test(env.JAVA_TOOL_OPTIONS || '')) {
+  const uds = path.join(gradleHome || path.join(require('os').homedir(), '.gradle'), 'uds');
+  fs.mkdirSync(uds, { recursive: true });
+  env.JAVA_TOOL_OPTIONS = `${env.JAVA_TOOL_OPTIONS || ''} -Djdk.net.unixdomain.tmpdir=${uds}`.trim();
+}
 const credsFile = path.join(root, 'credentials.json');
 let signed = false;
 if (exists(credsFile)) {
@@ -240,8 +261,31 @@ fs.writeFileSync(
 const propsFile = path.join(root, 'android', 'gradle.properties');
 fs.writeFileSync(
   propsFile,
-  fs.readFileSync(propsFile, 'utf8').replace(/^org\.gradle\.jvmargs=.*$/m, 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m'),
+  fs
+    .readFileSync(propsFile, 'utf8')
+    .replace(/^org\.gradle\.jvmargs=.*$/m, 'org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m')
+    .replace(/\n*systemProp\.java\.net\.useSystemProxies=.*/g, '')
+    .replace(/\s*$/, '\n') + // the generated file has no newline at the end
+    // Java ignores the Windows proxy settings unless told to (office networks often only let traffic out through it).
+    'systemProp.java.net.useSystemProxies=true\n',
 );
+// The same for the wrapper, which downloads Gradle before any of the above is read.
+env.GRADLE_OPTS = `${env.GRADLE_OPTS || ''} -Djava.net.useSystemProxies=true`.trim();
+
+// The Gradle wrapper downloads Gradle itself (~150 MB) the first time, with a 10-second connect timeout
+// that slow or filtered networks miss. Give it 2 minutes, and use a zip you downloaded yourself
+// (builds/gradle-<version>-bin.zip) when it's there.
+const wrapperFile = path.join(root, 'android', 'gradle', 'wrapper', 'gradle-wrapper.properties');
+let wrapper = fs.readFileSync(wrapperFile, 'utf8').replace(/^networkTimeout=.*$/m, 'networkTimeout=120000');
+const distUrl = (/^distributionUrl=(.*)$/m.exec(wrapper) || [])[1] || '';
+const distName = (/(gradle-[\w.-]+\.zip)\s*$/.exec(distUrl) || [])[1] || '';
+const localDist = distName && path.join(root, 'builds', distName);
+if (exists(localDist)) {
+  const fileUrl = `file:///${localDist.replace(/\\/g, '/').replace(/^\//, '')}`;
+  wrapper = wrapper.replace(/^distributionUrl=.*$/m, `distributionUrl=${propPath(fileUrl)}`);
+  console.log(`Gradle:      builds/${distName} (your download)`);
+}
+fs.writeFileSync(wrapperFile, wrapper);
 
 // 6. Build (phone CPUs only, which is much faster than all four).
 const gradlew = isWin ? 'gradlew.bat' : './gradlew';
@@ -249,6 +293,14 @@ const androidDir = path.join(buildRoot, 'android');
 try {
   run(gradlew, ['assembleRelease', '-PreactNativeArchitectures=arm64-v8a,armeabi-v7a'], { cwd: androidDir, env });
 } catch (err) {
+  if (distName && !exists(localDist)) {
+    fs.mkdirSync(path.join(root, 'builds'), { recursive: true });
+    console.error(
+      `\nIf it says "Downloading … ${distName} failed: timeout": this network is slow to reach Gradle's download.\n` +
+        `  Open ${distUrl.replace(/\\:/g, ':')} in your browser, save the zip as builds\\${distName}\n` +
+        '  in this project, and run this again (no --clean needed). It\'s used from there.',
+    );
+  }
   if (isWin) {
     console.error(
       '\nIf the error mentions "still dirty" or very long paths, move the project to a short folder' +
