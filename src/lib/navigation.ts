@@ -8,10 +8,18 @@ export type VideoRef = { id: string; uri: string; title: string; width?: number;
 
 const str = (n: number | undefined) => (n ? String(Math.round(n)) : '');
 
-export function openPlayer(v: VideoRef, opts: { fromStart?: boolean } = {}) {
-  router.push({
+export function openPlayer(v: VideoRef, opts: { fromStart?: boolean; replace?: boolean } = {}) {
+  (opts.replace ? router.replace : router.push)({
     pathname: '/player',
     params: { id: v.id, uri: v.uri, title: v.title, w: str(v.width), h: str(v.height), d: str(v.durationMs), fromStart: opts.fromStart ? '1' : '' },
+  });
+}
+
+/** The "make a seekable copy" screen, for files without a seek index (opened in place of the player). */
+export function openSeekableCopy(v: VideoRef) {
+  router.replace({
+    pathname: '/seekable',
+    params: { id: v.id, uri: v.uri, title: v.title, w: str(v.width), h: str(v.height), d: str(v.durationMs) },
   });
 }
 

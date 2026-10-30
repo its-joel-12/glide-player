@@ -52,3 +52,4 @@ credentials/
 
 # native module build output
 modules/*/android/build/
+modules/*/android/.gradle/

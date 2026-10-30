@@ -61,6 +61,7 @@ export default function RootLayout() {
           <Stack.Screen name="folder/[id]" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="export" />
+          <Stack.Screen name="seekable" />
           <Stack.Screen
             name="player"
             options={{ presentation: 'fullScreenModal', animation: 'fade', contentStyle: { backgroundColor: '#000' } }}

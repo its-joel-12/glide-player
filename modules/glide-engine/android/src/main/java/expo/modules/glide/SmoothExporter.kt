@@ -7,6 +7,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.os.StatFs
 import android.provider.MediaStore
 import androidx.annotation.OptIn
 import androidx.media3.common.C
@@ -30,6 +31,8 @@ import expo.modules.kotlin.Promise
 import java.io.File
 
 /**
+ * Also makes seekable copies (see [ExportOptions.remux]).
+ *
  * Saves a smoothed (higher frame rate) or slow-motion copy of a video, like an optical-flow
  * retime in an editor. Uses the same motion engine as playback, with the slower, more detailed
  * analysis, and isn't limited to real time. Must be used on the main thread.
@@ -40,6 +43,8 @@ internal class SmoothExporter(private val context: Context, private val onProgre
   private var promise: Promise? = null
   private var output: File? = null
   private var displayName = "glide.mp4"
+  /** Seekable copies can be as big as a whole film: don't keep a second copy in the cache. */
+  private var dropCacheCopy = false
   private val handler = Handler(Looper.getMainLooper())
   private val progress = ProgressHolder()
 
@@ -55,6 +60,10 @@ internal class SmoothExporter(private val context: Context, private val onProgre
     }
     if (opts.uri.isEmpty()) {
       promise.reject("NO_VIDEO", "No video was given.", null)
+      return
+    }
+    if (opts.remux) {
+      startRemux(opts, promise)
       return
     }
     val slow = opts.slowMotion.coerceIn(1, 8)
@@ -73,12 +82,10 @@ internal class SmoothExporter(private val context: Context, private val onProgre
     if (slow > 1) item.setSpeed(ConstantSpeed(1f / slow))
     if (!opts.keepAudio) item.setRemoveAudio(true)
 
-    val base = opts.title.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9 _-]"), "").trim().ifEmpty { "video" }.take(60)
     val suffix = if (slow > 1) "slowmo-${slow}x-${fps}fps" else "smooth-${fps}fps"
-    displayName = "$base-$suffix.mp4"
-    val dir = File(context.cacheDir, "exports").apply { mkdirs() }
-    dir.listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() > 86_400_000L) it.delete() }
-    val out = File(dir, "${System.currentTimeMillis()}-$displayName")
+    displayName = "${baseName(opts.title)}-$suffix.mp4"
+    dropCacheCopy = false
+    val out = outputFile(displayName)
 
     // The default bitrate follows the source frame rate; a 4× faster copy needs about 4× the bits.
     val pixels = opts.width.coerceIn(160, 7680).toLong() * opts.height.coerceIn(120, 4320)
@@ -91,11 +98,52 @@ internal class SmoothExporter(private val context: Context, private val onProgre
       .setVideoMimeType(MimeTypes.VIDEO_H264)
       .addListener(listener)
       .build()
+    run(t, item.build(), out, promise)
+  }
+
+  /** Rewrites the video into an MP4 with a seek index (no effects, streams copied when possible). */
+  private fun startRemux(opts: ExportOptions, promise: Promise) {
+    val uri = Uri.parse(opts.uri)
+    // Peak use: the new file in the cache plus its copy in the gallery, each about the original's size.
+    val size = sourceSize(uri)
+    val free = StatFs(context.cacheDir.path).availableBytes
+    if (size > 0 && free < size * 2 + 300_000_000L) {
+      val needGb = (size * 2 + 300_000_000L) / 1e9
+      promise.reject("NO_SPACE", "Not enough free space: this needs about %.1f GB free while it works.".format(needGb), null)
+      return
+    }
+    displayName = "${baseName(opts.title)}-seekable.mp4"
+    dropCacheCopy = true
+    val item = EditedMediaItem.Builder(MediaItem.fromUri(uri))
+    if (!opts.keepAudio) item.setRemoveAudio(true)
+    // No effects and no forced codec: Transformer copies streams that MP4 can hold and converts the rest.
+    val t = Transformer.Builder(context).addListener(listener).build()
+    run(t, item.build(), outputFile(displayName), promise)
+  }
+
+  private fun baseName(title: String) =
+    title.substringBeforeLast('.').replace(Regex("[^A-Za-z0-9 _-]"), "").trim().ifEmpty { "video" }.take(60)
+
+  private fun outputFile(name: String): File {
+    val dir = File(context.cacheDir, "exports").apply { mkdirs() }
+    dir.listFiles()?.forEach { if (System.currentTimeMillis() - it.lastModified() > 86_400_000L) it.delete() }
+    return File(dir, "${System.currentTimeMillis()}-$name")
+  }
+
+  private fun sourceSize(uri: Uri): Long =
+    try {
+      if (uri.scheme == "file" || uri.scheme == null) File(uri.path ?: "").length()
+      else context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { it.length } ?: -1L
+    } catch (_: Exception) {
+      -1L
+    }
+
+  private fun run(t: Transformer, item: EditedMediaItem, out: File, promise: Promise) {
     this.promise = promise
     this.output = out
     this.transformer = t
     try {
-      t.start(item.build(), out.absolutePath)
+      t.start(item, out.absolutePath)
     } catch (e: Exception) {
       finish()
       promise.reject("EXPORT_FAILED", e.message ?: "Couldn't start saving the video.", e)
@@ -118,18 +166,21 @@ internal class SmoothExporter(private val context: Context, private val onProgre
       val p = promise
       val file = output
       val name = displayName
+      val dropCache = dropCacheCopy
       finish()
       if (p == null || file == null) return
       onProgress(100)
       // Copying into the gallery can take a moment for big files: keep it off the main thread.
       Thread {
+        val bytes = if (exportResult.fileSizeBytes > 0) exportResult.fileSizeBytes else file.length()
         val saved = saveToGallery(file, name)
+        if (saved != null && dropCache) file.delete()
         p.resolve(
           mapOf(
             "uri" to (saved?.toString() ?: Uri.fromFile(file).toString()),
-            "fileUri" to Uri.fromFile(file).toString(),
+            "fileUri" to (if (saved != null && dropCache) "" else Uri.fromFile(file).toString()),
             "savedToGallery" to (saved != null),
-            "fileSizeBytes" to (if (exportResult.fileSizeBytes > 0) exportResult.fileSizeBytes else file.length()).toDouble(),
+            "fileSizeBytes" to bytes.toDouble(),
             "name" to name,
           )
         )

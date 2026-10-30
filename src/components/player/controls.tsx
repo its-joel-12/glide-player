@@ -47,6 +47,8 @@ export type ControlsProps = {
   /** Current audio and subtitle delay (ms); shown as a badge when not zero. */
   audioDelayMs: number;
   subtitleDelayMs: number;
+  /** Set when the file has no seek index: shows a “Make seekable” button. */
+  onMakeSeekable?: () => void;
   onBack: () => void;
   onPlayPause: () => void;
   onSeekBy: (ms: number) => void;
@@ -146,6 +148,18 @@ export function PlayerControls(p: ControlsProps) {
               {formatTime(p.durationMs)}
             </ThemedText>
           </ThemedText>
+          {p.onMakeSeekable ? (
+            <Pressable
+              onPress={p.onMakeSeekable}
+              accessibilityRole="button"
+              accessibilityLabel="This file can't be skipped through. Make a seekable copy."
+              style={({ pressed }) => [styles.delay, styles.fix, pressed && { opacity: 0.7 }]}>
+              <Icon ios="wrench.and.screwdriver" md="build" size={15} color={Screen.onAccent} />
+              <ThemedText type="smallBold" color={Screen.onAccent} style={{ fontSize: 12 }}>
+                Make seekable
+              </ThemedText>
+            </Pressable>
+          ) : null}
           <DelayBadge audioMs={p.audioDelayMs} subtitleMs={p.subtitleDelayMs} onPress={p.onOpenTracks} />
           <View style={styles.rowRight}>
             <Pressable onPress={p.onOpenSpeed} accessibilityRole="button" accessibilityLabel={`Speed ${p.rate}×`} style={styles.speed}>
@@ -181,6 +195,7 @@ const styles = StyleSheet.create({
   rowRight: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   time: { fontSize: 13 },
   delay: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: Screen.track, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
+  fix: { backgroundColor: Screen.accent, borderColor: Screen.accent },
   speed: { paddingHorizontal: 10, paddingVertical: 8 },
   btn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   btnActive: { backgroundColor: 'rgba(240,162,74,0.18)' },

@@ -54,6 +54,12 @@ class ExportOptions : Record {
   /** Size of the video, to pick an encoder bitrate that suits the higher frame rate. */
   @Field val width: Int = 1920
   @Field val height: Int = 1080
+  /**
+   * Seekable copy instead of a smooth one: the same picture and main audio track rewritten into
+   * an MP4 (which always has a seek index). Streams are copied as they are when MP4 can hold
+   * them, so there's no quality loss; others are converted.
+   */
+  @Field val remux: Boolean = false
 }
 
 internal object DisplayInfo {

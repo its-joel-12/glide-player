@@ -32,7 +32,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
 import { containerLabel, formatFps, formatOffset, formatTime, seekTarget } from '@/lib/format';
 import { clamp } from '@/lib/gestures';
-import { pickSubtitleFile } from '@/lib/navigation';
+import { openSeekableCopy, pickSubtitleFile } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResume, getResume, saveResume, startPosition } from '@/lib/resume';
 import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS, type SmoothingMode } from '@/lib/settings-schema';
@@ -40,7 +40,7 @@ import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WE
 type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | null;
 const isWeb = Platform.OS === 'web';
 const NOT_SEEKABLE =
-  'This file can’t be skipped through: it has no seek index (common with some MKV files and recordings). It plays from the start; re-saving it as MP4 fixes it.';
+  'This file can’t be skipped through: it has no seek index (common with some MKV files and recordings). Tap “Make seekable” to save an MP4 copy you can skip through.';
 const MIN_AUDIO_DELAY_MS = isWeb ? WEB_MIN_AUDIO_DELAY_MS : AUDIO_DELAY_RANGE.min;
 
 /** Back to the previous screen, or home when the player was opened directly (web refresh / link). */
@@ -451,6 +451,14 @@ export default function PlayerScreen() {
                   rateLabel={smoothingAvailable ? rateLabel : ''}
                   audioDelayMs={audioDelayMs}
                   subtitleDelayMs={subtitleDelayMs}
+                  onMakeSeekable={
+                    pos.seekable || isWeb
+                      ? undefined
+                      : () => {
+                          setPaused(true);
+                          openSeekableCopy({ id, uri: params.uri, title, width: videoW, height: videoH, durationMs: pos.durationMs });
+                        }
+                  }
                   onBack={goBack}
                   onPlayPause={() => {
                     playPause();

@@ -19,6 +19,10 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
 - **Save a smooth or slow-motion copy:** optical-flow retime to 30/60/120 fps, or 2×/4×/8× slower,
   with a slower, more detailed analysis than playback (half- and quarter-pixel). Saved to
   *Movies/Glide*; the original isn't changed.
+- **Seekable copy:** some files (often MKVs and recordings) have no seek index, so no player can jump
+  around in them or resume them. The player says so and shows a *Make seekable* button that writes an
+  MP4 copy to *Movies/Glide*, copying the streams without re-encoding when MP4 can hold them (main
+  audio track only; built-in subtitles aren't copied).
 - **Library:** all videos newest first, folders, thumbnails, durations, *Continue watching* with
   resume positions; open any other file from the folder button.
 - **Player essentials:** swipe sideways to seek, up/down on the left for brightness and on the right

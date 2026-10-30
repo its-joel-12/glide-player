@@ -133,6 +133,12 @@ export type ExportOptions = {
   /** Video size, for the encoder bitrate. */
   width: number;
   height: number;
+  /**
+   * Make a seekable copy instead: same picture and main audio track rewritten into an MP4 (which
+   * always has a seek index), copied without re-encoding when MP4 can hold the streams.
+   * fps, slowMotion and quality are ignored.
+   */
+  remux?: boolean;
 };
 export type ExportResult = {
   /** content:// in the gallery (Movies/Glide), or the file itself on older Android. */
