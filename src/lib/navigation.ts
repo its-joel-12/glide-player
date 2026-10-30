@@ -11,7 +11,7 @@ const str = (n: number | undefined) => (n ? String(Math.round(n)) : '');
 export function openPlayer(v: VideoRef, opts: { fromStart?: boolean } = {}) {
   router.push({
     pathname: '/player',
-    params: { id: v.id, uri: v.uri, title: v.title, w: str(v.width), h: str(v.height), fromStart: opts.fromStart ? '1' : '' },
+    params: { id: v.id, uri: v.uri, title: v.title, w: str(v.width), h: str(v.height), d: str(v.durationMs), fromStart: opts.fromStart ? '1' : '' },
   });
 }
 

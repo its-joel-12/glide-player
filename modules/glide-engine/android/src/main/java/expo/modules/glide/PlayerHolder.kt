@@ -10,6 +10,8 @@ import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import expo.modules.glide.memc.MemcEffect
@@ -75,6 +77,17 @@ internal object PlayerHolder {
       .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
       .setSeekBackIncrementMs(10_000)
       .setSeekForwardIncrementMs(10_000)
+      // Files without a seek index (some MP3/AAC/AMR streams) can still be skipped through by
+      // assuming a constant bitrate; long MPEG-TS recordings get a wider search for their duration.
+      .setMediaSourceFactory(
+        DefaultMediaSourceFactory(
+          app,
+          DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+            .setConstantBitrateSeekingAlwaysEnabled(true)
+            .setTsExtractorTimestampSearchBytes(1500 * 188),
+        )
+      )
       .build()
     if (withEffects) p.setVideoEffects(listOf<Effect>(MemcEffect(settings, stats, isExport = false)))
     // Count what really reaches the screen, for the frame-rate readout.

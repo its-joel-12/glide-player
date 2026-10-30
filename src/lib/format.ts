@@ -64,3 +64,30 @@ export function titleFromName(name: string | null | undefined): string {
   const dot = base.lastIndexOf('.');
   return (dot > 0 ? base.slice(0, dot) : base) || 'Video';
 }
+
+/** Short name for a container MIME type ("video/x-matroska" → "MKV"); '' when unknown. */
+export function containerLabel(mime: string | undefined): string {
+  if (!mime) return '';
+  const known: Record<string, string> = {
+    'video/x-matroska': 'MKV',
+    'video/webm': 'WebM',
+    'video/mp4': 'MP4',
+    'video/quicktime': 'MOV',
+    'video/mp2t': 'TS',
+    'video/mp2p': 'MPEG-PS',
+    'video/x-msvideo': 'AVI',
+    'video/avi': 'AVI',
+    'video/3gpp': '3GP',
+    'video/x-flv': 'FLV',
+  };
+  return known[mime] ?? mime.replace(/^\w+\/(x-)?/, '').toUpperCase();
+}
+
+/**
+ * Where a seek should land. With a known duration it stays half a second before the end;
+ * with an unknown duration (0) it is only kept above 0 — clamping to 0 would restart the video.
+ */
+export function seekTarget(ms: number, durationMs: number): number {
+  const hi = durationMs > 0 ? Math.max(0, durationMs - 500) : Number.MAX_SAFE_INTEGER;
+  return Math.min(hi, Math.max(0, ms));
+}

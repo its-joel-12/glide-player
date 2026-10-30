@@ -10,6 +10,7 @@ import {
   setVolume,
   type GlidePlayerRef,
   type LoadEvent,
+  type ProgressEvent,
   type ResizeMode,
   type StatsEvent,
   type SubtitleSource,
@@ -29,7 +30,7 @@ import { HudPill, type Hud } from '@/components/player/hud';
 import { SmoothingSheet, SpeedSheet, SubtitleStyleSheet, TracksSheet } from '@/components/player/sheets';
 import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
-import { formatFps, formatOffset, formatTime } from '@/lib/format';
+import { containerLabel, formatFps, formatOffset, formatTime, seekTarget } from '@/lib/format';
 import { clamp } from '@/lib/gestures';
 import { pickSubtitleFile } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
@@ -38,6 +39,8 @@ import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WE
 
 type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | null;
 const isWeb = Platform.OS === 'web';
+const NOT_SEEKABLE =
+  'This file can’t be skipped through: it has no seek index (common with some MKV files and recordings). It plays from the start; re-saving it as MP4 fixes it.';
 const MIN_AUDIO_DELAY_MS = isWeb ? WEB_MIN_AUDIO_DELAY_MS : AUDIO_DELAY_RANGE.min;
 
 /** Back to the previous screen, or home when the player was opened directly (web refresh / link). */
@@ -53,7 +56,7 @@ const RESIZE: ResizeMode[] = ['fit', 'zoom', 'fill'];
 const RESIZE_LABEL: Record<ResizeMode, string> = { fit: 'Fit', zoom: 'Fill screen (crop)', fill: 'Stretch' };
 
 export default function PlayerScreen() {
-  const params = useLocalSearchParams<{ id: string; uri: string; title?: string; w?: string; h?: string; fromStart?: string }>();
+  const params = useLocalSearchParams<{ id: string; uri: string; title?: string; w?: string; h?: string; d?: string; fromStart?: string }>();
   const prefs = usePreferences();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -80,7 +83,9 @@ export default function PlayerScreen() {
   const [hud, setHud] = useState<Hud | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
-  const [pos, setPos] = useState({ positionMs: startAt, durationMs: 0, bufferedMs: 0 });
+  // Duration from the phone's library until the player knows it (some long files report it late or not at all).
+  const libraryDurationMs = Number(params.d) || 0;
+  const [pos, setPos] = useState({ positionMs: startAt, durationMs: libraryDurationMs, bufferedMs: 0, seekable: true });
   const [scrubMs, setScrubMs] = useState<number | null>(null);
   const [tracks, setTracks] = useState<TracksEvent>({ audio: [], text: [] });
   const [info, setInfo] = useState<LoadEvent | null>(null);
@@ -141,7 +146,7 @@ export default function PlayerScreen() {
         void Brightness.restoreSystemBrightnessAsync().catch(() => {});
       }
       const p = posRef.current;
-      if (p.durationMs > 0) saveResume(id, { positionMs: p.positionMs, durationMs: p.durationMs, title, uri: params.uri });
+      if (p.durationMs > 0 && p.seekable) saveResume(id, { positionMs: p.positionMs, durationMs: p.durationMs, title, uri: params.uri });
       [hudTimer, toastTimer].forEach((t) => t.current && clearTimeout(t.current));
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -164,27 +169,36 @@ export default function PlayerScreen() {
     setInfo(ev);
     setBuffering(false);
     if (prefs.autoRotate && ev.width > 0 && ev.height > 0 && landscape === null) applyOrientation(ev.width >= ev.height);
-    if (startAt > 0) showToast(`Continuing from ${formatTime(startAt)}`);
+    if (ev.seekable === false) {
+      setPos((p) => ({ ...p, seekable: false }));
+      showToast(NOT_SEEKABLE);
+    } else if (startAt > 0) showToast(`Continuing from ${formatTime(startAt)}`);
   };
-  const onProgress = (e: { nativeEvent: { positionMs: number; durationMs: number; bufferedMs: number } }) => {
+  const onProgress = (e: { nativeEvent: ProgressEvent }) => {
     const ev = e.nativeEvent;
-    setPos(ev);
-    if (Date.now() - lastSaved.current > 5000 && ev.durationMs > 0) {
+    const durationMs = ev.durationMs > 0 ? ev.durationMs : libraryDurationMs;
+    const seekable = ev.seekable !== false;
+    setPos({ positionMs: ev.positionMs, durationMs, bufferedMs: ev.bufferedMs, seekable });
+    if (seekable && Date.now() - lastSaved.current > 5000 && durationMs > 0) {
       lastSaved.current = Date.now();
-      saveResume(id, { positionMs: ev.positionMs, durationMs: ev.durationMs, title, uri: params.uri });
+      saveResume(id, { positionMs: ev.positionMs, durationMs, title, uri: params.uri });
     }
   };
 
   // ---- actions
   const seekTo = (ms: number) => {
-    const target = clamp(ms, 0, Math.max(0, pos.durationMs - 500));
+    if (!pos.seekable) {
+      showToast(NOT_SEEKABLE);
+      return;
+    }
+    const target = seekTarget(ms, pos.durationMs);
     setPos((p) => ({ ...p, positionMs: target }));
     setEnded(false);
     void ref.current?.seekTo(target);
   };
   const seekBy = (delta: number) => {
     seekTo(pos.positionMs + delta);
-    flashHud({ kind: 'seek', label: formatOffset(delta), detail: formatTime(clamp(pos.positionMs + delta, 0, pos.durationMs)) });
+    if (pos.seekable) flashHud({ kind: 'seek', label: formatOffset(delta), detail: formatTime(seekTarget(pos.positionMs + delta, pos.durationMs)) });
   };
   const playPause = () => {
     if (ended) {
@@ -383,7 +397,7 @@ export default function PlayerScreen() {
                 onTap={() => (showControls ? setControls(false) : poke())}
                 onDoubleTap={(side) => (side === 'center' ? playPause() : seekBy((side === 'left' ? -1 : 1) * prefs.seekStep * 1000))}
                 onSeekSwipe={(offset, done) => {
-                  const target = clamp(pos.positionMs + offset, 0, pos.durationMs);
+                  const target = seekTarget(pos.positionMs + offset, pos.durationMs);
                   if (done) {
                     setScrubMs(null);
                     seekTo(target);
@@ -497,7 +511,7 @@ export default function PlayerScreen() {
 
           {prefs.showStats ? (
             <View pointerEvents="none" style={[styles.stats, { top: insets.top + (showControls ? 64 : 12) + (compare && prefs.mode !== 'off' ? 34 : 0), right: insets.right + 12 }]}>
-              {statsLines(stats, sourceFps, prefs.mode, paused).map((line, i) => (
+              {statsLines(stats, sourceFps, prefs.mode, paused, `${containerLabel(info?.container)}${pos.seekable ? '' : ' · no seek index'}`).map((line, i) => (
                 <ThemedText key={i} font="mono" color={i === 0 ? Screen.text : Screen.textDim} style={styles.statsText}>
                   {line}
                 </ThemedText>
@@ -583,14 +597,15 @@ export default function PlayerScreen() {
 }
 
 /** The frame-rate readout: what the file has, what reaches the screen, what was made up or lost. */
-function statsLines(stats: StatsEvent | null, sourceFps: number, mode: SmoothingMode, paused: boolean): string[] {
+function statsLines(stats: StatsEvent | null, sourceFps: number, mode: SmoothingMode, paused: boolean, file: string): string[] {
   if (!stats) return ['Measuring frame rate…'];
   const shown = Math.round(stats.renderedFps || stats.outputFps);
   const head = `${sourceFps > 0 ? formatFps(sourceFps) : '?'} fps video → ${paused ? 'paused' : `${shown} fps on screen`}`;
   const parts = [`decoded ${formatFps(stats.inputFps)}/s`];
   if (stats.smoothing && mode !== 'off') parts.push(`made ${Math.round(stats.generatedFps)}/s`);
   parts.push(`dropped ${Math.round(stats.droppedFps)}/s`, `${Math.round(stats.displayHz)} Hz`);
-  return [head, parts.join(' · '), mode === 'off' || !stats.smoothing ? 'Smoothing off' : stats.motion ? (mode === 'memc' ? 'MEMC active' : 'Blend active') : 'Smoothing idle'];
+  const state = mode === 'off' || !stats.smoothing ? 'Smoothing off' : stats.motion ? (mode === 'memc' ? 'MEMC active' : 'Blend active') : 'Smoothing idle';
+  return [head, parts.join(' · '), file.replace(/^ · /, '') ? `${state} · ${file.replace(/^ · /, '')}` : state];
 }
 
 const styles = StyleSheet.create({

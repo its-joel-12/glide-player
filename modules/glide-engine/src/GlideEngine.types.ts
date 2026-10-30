@@ -48,8 +48,12 @@ export type LoadEvent = {
   maxRefreshRate: number;
   /** False when this video plays without the smoothing pipeline. */
   smoothing: boolean;
+  /** False when the file can't be skipped through (e.g. an MKV without a seek index). */
+  seekable?: boolean;
+  /** Container type, e.g. "video/x-matroska" (Android; empty when unknown). */
+  container?: string;
 };
-export type ProgressEvent = { positionMs: number; durationMs: number; bufferedMs: number };
+export type ProgressEvent = { positionMs: number; durationMs: number; bufferedMs: number; seekable?: boolean };
 export type StatsEvent = {
   /** Frames per second coming out of the decoder. */
   inputFps: number;

@@ -167,6 +167,8 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
         "frameRate" to (format?.frameRate?.takeIf { it > 0 }?.toDouble() ?: 0.0),
         "maxRefreshRate" to DisplayInfo.maxRefreshRate(activity()).toDouble(),
         "smoothing" to PlayerHolder.effectsEnabled,
+        "seekable" to player.isCurrentMediaItemSeekable,
+        "container" to (format?.containerMimeType ?: player.audioFormat?.containerMimeType ?: ""),
       )
     )
   }
@@ -231,6 +233,7 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
           "positionMs" to player.currentPosition.toDouble(),
           "durationMs" to durationMs(),
           "bufferedMs" to player.bufferedPosition.toDouble(),
+          "seekable" to player.isCurrentMediaItemSeekable,
         )
       )
       if (++n % 4 == 0) sendStats()

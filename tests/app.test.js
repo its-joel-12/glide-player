@@ -104,6 +104,17 @@ eq(ass, [{ start: 1, end: 2, text: 'Bold, yes\nline two' }], 'parse ass (commas,
 eq(sub.cueAt(srt, 1.2), 'Hello\nthere', 'cue at 1.2');
 eq(sub.cueAt(srt, 2.7), '', 'no cue between');
 
+// seeking in long files / files with an unknown duration
+eq(f.seekTarget(7_300_000, 8_400_000), 7_300_000, '2h20m video: jump to 2:01:40 stays there');
+eq(f.seekTarget(9_000_000, 8_400_000), 8_399_500, 'past the end → just before the end');
+eq(f.seekTarget(5_400_000, 0), 5_400_000, 'unknown duration: seek is NOT clamped to 0');
+eq(f.seekTarget(-10_000, 0), 0, 'never below 0');
+eq(f.containerLabel('video/x-matroska'), 'MKV', 'MKV label');
+eq(f.containerLabel('video/mp4'), 'MP4', 'MP4 label');
+eq(f.containerLabel('video/x-something'), 'SOMETHING', 'unknown container label');
+eq(f.containerLabel(''), '', 'no container');
+eq(r.startPosition({ positionMs: 6_000_000, durationMs: 8_400_000, updatedAt: 0, title: '', uri: '' }), 5_998_000, 'resume works for a 2h20m video');
+
 // video grid helpers (the library list)
 const grid = require('../src/lib/grid.ts');
 const vids = (...ids) => ids.map((id) => ({ id }));
