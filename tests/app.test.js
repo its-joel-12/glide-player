@@ -133,6 +133,28 @@ eq(s.normalizePreferences({}).holdSpeed, 2, 'hold speed 2× by default');
 eq(s.normalizePreferences({ holdSpeed: 5 }).holdSpeed, 2, 'bad hold speed → 2×');
 eq(s.normalizePreferences({ holdToSpeed: false }).holdToSpeed, false, 'hold can be turned off');
 
+// library sorting and "watched"
+const ls = require('../src/lib/library-sort.ts');
+const lib = [
+  { id: 'a', title: 'Episode 10', durationMs: 1_400_000, modifiedAt: 3 },
+  { id: 'b', title: 'episode 2', durationMs: 7_200_000, modifiedAt: 1 },
+  { id: 'c', title: 'Zoo trip', durationMs: 60_000, modifiedAt: 2 },
+];
+const ids = (l) => l.map((v) => v.id).join('');
+eq(ids(ls.sortVideos(lib, 'newest')), 'acb', 'sort newest');
+eq(ids(ls.sortVideos(lib, 'oldest')), 'bca', 'sort oldest');
+eq(ids(ls.sortVideos(lib, 'name')), 'bac', 'sort name: numbers in order, case ignored');
+eq(ids(ls.sortVideos(lib, 'nameDesc')), 'cab', 'sort name Z–A');
+eq(ids(ls.sortVideos(lib, 'longest')), 'bac', 'sort longest');
+eq(ids(ls.sortVideos(lib, 'shortest')), 'cab', 'sort shortest');
+eq(ids(lib), 'abc', 'sorting leaves the original alone');
+eq(r.isFinished(7_150_000, 7_200_000), true, 'in the credits → watched');
+eq(r.isFinished(3_600_000, 7_200_000), false, 'halfway → not watched');
+eq(r.isFinished(5_000, 0), false, 'unknown length → not watched');
+eq(s.normalizePreferences({}).libraryView, 'grid', 'grid view by default');
+eq(s.normalizePreferences({ librarySort: 'name', libraryView: 'list' }).librarySort, 'name', 'saved sort kept');
+eq(s.normalizePreferences({ librarySort: 'size' }).librarySort, 'newest', 'unknown sort → newest');
+
 // video grid helpers (the library list)
 const grid = require('../src/lib/grid.ts');
 const vids = (...ids) => ids.map((id) => ({ id }));

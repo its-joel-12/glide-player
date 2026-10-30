@@ -24,8 +24,10 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
   MP4 copy to *Movies/Glide*. The picture is copied without re-encoding, every audio track is kept
   (converted to AAC when MP4 can't hold it and the phone can decode it), and text subtitles (SRT/ASS/
   WebVTT) are saved alongside and load automatically when the copy plays in Glide.
-- **Library:** all videos newest first, folders, thumbnails, durations, *Continue watching* with
-  resume positions; open any other file from the folder button.
+- **Library:** all videos as big thumbnails or a compact list, sorted by date, name or length;
+  folders, thumbnails, durations, a tick on videos you've watched to the end, *Continue watching* with
+  resume positions; share or delete a video from its menu (long-press or ⋮); open any other file from
+  the folder button.
 - **Player essentials:** swipe sideways to seek, up/down on the left for brightness and on the right
   for volume, double-tap to skip, pinch to fill the screen; subtitles (built-in tracks or .srt/.vtt/.ass
   files), audio track choice, speed, picture-in-picture, background sound with lock-screen controls,

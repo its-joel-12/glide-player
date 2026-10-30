@@ -19,6 +19,11 @@ export function startPosition(entry: ResumeEntry | undefined): number {
   return Math.max(0, p - 2_000); // a couple of seconds back, to pick up the thread
 }
 
+/** True once playback is in the last stretch (credits): the same point where resuming stops. */
+export function isFinished(positionMs: number, durationMs: number): boolean {
+  return durationMs > 0 && positionMs > durationMs - Math.max(10_000, durationMs * 0.03);
+}
+
 /** 0..1 bar under a thumbnail, or 0 when there is nothing to resume. */
 export function progressFraction(entry: ResumeEntry | undefined): number {
   if (!entry || startPosition(entry) === 0) return 0;

@@ -63,7 +63,7 @@ export default function LibraryScreen() {
               </View>
             ) : null}
           </View>
-          {tab === 'videos' ? <VideoGrid header={<ContinueWatching />} emptyText="No videos on this phone yet." /> : <FolderList />}
+          {tab === 'videos' ? <VideoGrid header={<ContinueWatching />} title="All videos" emptyText="No videos on this phone yet." /> : <FolderList />}
         </>
       ) : access === 'unknown' ? null : (
         <AccessGate access={access} onGranted={setAccess} onOpenFile={() => void openFile()} />
@@ -75,15 +75,9 @@ export default function LibraryScreen() {
 function ContinueWatching() {
   const entries = useResumeEntries();
   const list = continueWatching(entries);
-  if (!list.length) {
-    return (
-      <ThemedText type="label" themeColor="textSecondary" style={styles.sectionLabel}>
-        All videos
-      </ThemedText>
-    );
-  }
+  if (!list.length) return null;
   return (
-    <View style={{ gap: Spacing.two }}>
+    <View style={{ gap: Spacing.two, marginBottom: Spacing.four }}>
       <ThemedText type="label" themeColor="textSecondary" style={styles.sectionLabel}>
         Continue watching
       </ThemedText>
@@ -101,9 +95,6 @@ function ContinueWatching() {
           />
         ))}
       </ScrollView>
-      <ThemedText type="label" themeColor="textSecondary" style={[styles.sectionLabel, { marginTop: Spacing.three }]}>
-        All videos
-      </ThemedText>
     </View>
   );
 }

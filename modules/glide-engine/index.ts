@@ -8,5 +8,6 @@ export {
   getVolume,
   isEngineAvailable,
   setVolume,
+  shareVideo,
 } from './src/GlideEngineModule';
 export type * from './src/GlideEngine.types';

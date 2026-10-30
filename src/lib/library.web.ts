@@ -30,6 +30,14 @@ export async function fetchVideos(_options: { album?: unknown; offset?: number; 
   return [];
 }
 
+export async function fetchAllVideos(_album?: unknown): Promise<VideoItem[]> {
+  return [];
+}
+
+export async function deleteVideo(_item: { id: string }): Promise<void> {
+  throw new Error('Deleting needs the Android app.');
+}
+
 export async function fetchFolders(): Promise<Folder[]> {
   return [];
 }

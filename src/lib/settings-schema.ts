@@ -1,5 +1,6 @@
 /** Saved settings and how to read them back safely (no React Native imports: used by tests too). */
 import type { SubtitleStyle } from '../../modules/glide-engine/src/GlideEngine.types';
+import type { LibrarySort, LibraryView } from './library-sort';
 
 export type { SubtitleStyle };
 
@@ -34,6 +35,9 @@ export type Preferences = {
   holdToSpeed: boolean;
   /** Speed for press-and-hold (1.5, 2 or 3). */
   holdSpeed: number;
+  /** Videos tab: big thumbnails or a list. */
+  libraryView: LibraryView;
+  librarySort: LibrarySort;
   subtitleStyle: SubtitleStyle;
   /** Audio delay every video starts with (ms; + = sound later). */
   audioDelayMs: number;
@@ -70,6 +74,8 @@ export const DefaultPreferences: Preferences = {
   gestureVolume: true,
   holdToSpeed: true,
   holdSpeed: 2,
+  libraryView: 'grid',
+  librarySort: 'newest',
   subtitleStyle: DefaultSubtitleStyle,
   audioDelayMs: 0,
   subtitleDelayMs: 0,
@@ -145,6 +151,8 @@ export function normalizePreferences(saved: unknown): Preferences {
     gestureVolume: bool(s.gestureVolume, d.gestureVolume),
     holdToSpeed: bool(s.holdToSpeed, d.holdToSpeed),
     holdSpeed: (HoldSpeedOptions as readonly number[]).includes(s.holdSpeed as number) ? (s.holdSpeed as number) : d.holdSpeed,
+    libraryView: oneOf(s.libraryView, ['grid', 'list'] as const, d.libraryView),
+    librarySort: oneOf(s.librarySort, ['newest', 'oldest', 'name', 'nameDesc', 'longest', 'shortest'] as const, d.librarySort),
     subtitleStyle: normalizeSubtitleStyle(s.subtitleStyle),
     audioDelayMs: clampDelay(s.audioDelayMs, AUDIO_DELAY_RANGE),
     subtitleDelayMs: clampDelay(s.subtitleDelayMs, SUBTITLE_DELAY_RANGE),

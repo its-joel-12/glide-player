@@ -1,6 +1,7 @@
 /** Videos on the phone, read through the media library (MediaStore on Android). */
 import {
   Album,
+  Asset,
   AssetField,
   getPermissionsAsync,
   MediaType,
@@ -69,6 +70,22 @@ function toItem(m: AssetMetadata): VideoItem {
     height: m.height ?? 0,
     modifiedAt: m.modificationTime ?? m.creationTime ?? 0,
   };
+}
+
+/**
+ * Every video (in a folder, or on the phone), newest first. Only cheap metadata is read, so this is
+ * fast even for thousands of videos; sorting by name or length then happens in the app.
+ */
+export async function fetchAllVideos(album?: Album): Promise<VideoItem[]> {
+  let q = new Query().eq(AssetField.MEDIA_TYPE, MediaType.VIDEO);
+  if (album) q = q.album(album);
+  const rows = await q.orderBy({ key: AssetField.MODIFICATION_TIME, ascending: false }).limit(50_000).exeForMetadata();
+  return rows.map(toItem);
+}
+
+/** Deletes a video from the phone. Android 11+ asks the user to confirm; rejects if they say no. */
+export async function deleteVideo(item: Pick<VideoItem, 'id'>): Promise<void> {
+  await Asset.delete([new Asset(item.id)]);
 }
 
 /** One page of videos, newest first. */

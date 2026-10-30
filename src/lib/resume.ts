@@ -5,7 +5,7 @@ import { pruneEntries, type ResumeEntry } from './resume-rules';
 import { loadJSON, saveJSON, StorageKeys } from './storage';
 
 export type { ResumeEntry } from './resume-rules';
-export { continueWatching, progressFraction, startPosition } from './resume-rules';
+export { continueWatching, isFinished, progressFraction, startPosition } from './resume-rules';
 
 let entries: Record<string, ResumeEntry> = {};
 let loaded = false;

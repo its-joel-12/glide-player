@@ -1,11 +1,43 @@
+import { shareVideo } from 'glide-engine';
+import { Alert, Platform } from 'react-native';
+
 import { Sheet, SheetOption } from '@/components/sheet';
 import { formatResolution, formatTime } from '@/lib/format';
+import { deleteVideo } from '@/lib/library';
 import { openExport, openPlayer, type VideoRef } from '@/lib/navigation';
 import { clearResume, getResume, startPosition } from '@/lib/resume';
+import { isWatched, setWatched } from '@/lib/watched';
 
-/** Long-press menu for a video. */
-export function VideoActions({ video, onClose }: { video: VideoRef | null; onClose: () => void }) {
+/** Android 11+ shows its own "Allow Glide to delete this video?" dialog; older versions don't. */
+const systemConfirmsDelete = Platform.OS === 'android' && Number(Platform.Version) >= 30;
+
+async function confirmAndDelete(video: VideoRef, onDeleted?: (v: VideoRef) => void) {
+  if (!systemConfirmsDelete) {
+    const ok = await new Promise<boolean>((resolve) =>
+      Alert.alert('Delete this video?', `“${video.title}” will be removed from your phone.`, [
+        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
+      ]),
+    );
+    if (!ok) return;
+  }
+  try {
+    await deleteVideo(video);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    // Saying no in the system dialog lands here too: that isn't an error.
+    if (!/cancel|denied|declin|not granted/i.test(message)) Alert.alert('Couldn’t delete the video', message);
+    return;
+  }
+  clearResume(video.id);
+  setWatched(video.id, false);
+  onDeleted?.(video);
+}
+
+/** Long-press (or ⋮) menu for a video. */
+export function VideoActions({ video, onClose, onDeleted }: { video: VideoRef | null; onClose: () => void; onDeleted?: (v: VideoRef) => void }) {
   const resumeAt = video ? startPosition(getResume(video.id)) : 0;
+  const watched = video ? isWatched(video.id) : false;
   const run = (fn: () => void) => () => {
     onClose();
     fn();
@@ -18,11 +50,24 @@ export function VideoActions({ video, onClose }: { video: VideoRef | null; onClo
           <SheetOption label={resumeAt > 0 ? `Continue from ${formatTime(resumeAt)}` : 'Play'} detail={detail} onPress={run(() => openPlayer(video))} />
           {resumeAt > 0 ? <SheetOption label="Play from the start" onPress={run(() => openPlayer(video, { fromStart: true }))} /> : null}
           <SheetOption
+            label={watched ? 'Mark as not watched' : 'Mark as watched'}
+            onPress={run(() => {
+              setWatched(video.id, !watched);
+              if (!watched) clearResume(video.id);
+            })}
+          />
+          {resumeAt > 0 && !watched ? <SheetOption label="Mark as not started" onPress={run(() => clearResume(video.id))} /> : null}
+          <SheetOption
+            label="Share"
+            detail="Send it with another app"
+            onPress={run(() => void shareVideo(video.uri, video.title).catch((e: unknown) => Alert.alert('Couldn’t share the video', e instanceof Error ? e.message : String(e))))}
+          />
+          <SheetOption
             label="Save smooth or slow-motion copy"
             detail="Optical-flow retime: 60/120 fps or 2–8× slow motion"
             onPress={run(() => openExport(video))}
           />
-          {resumeAt > 0 ? <SheetOption label="Mark as not started" onPress={run(() => clearResume(video.id))} /> : null}
+          <SheetOption label="Delete from phone" detail="Removes the file itself" onPress={run(() => void confirmAndDelete(video, onDeleted))} />
         </>
       ) : null}
     </Sheet>

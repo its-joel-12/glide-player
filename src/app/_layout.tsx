@@ -18,11 +18,13 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { loadPreferences, usePreferences } from '@/lib/preferences';
 import { loadResume } from '@/lib/resume';
 import { loadSidecars } from '@/lib/sidecars';
+import { loadWatched } from '@/lib/watched';
 
 void SplashScreen.preventAutoHideAsync();
 void loadPreferences();
 void loadResume();
 void loadSidecars();
+void loadWatched();
 
 export default function RootLayout() {
   const scheme = useColorScheme();

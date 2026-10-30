@@ -51,6 +51,10 @@ export function exportSmooth(_options: ExportOptions): Promise<ExportResult> {
   return Promise.reject(new Error('Saving smooth videos needs the Android app.'));
 }
 
+export function shareVideo(_uri: string, _title: string): Promise<void> {
+  return Promise.reject(new Error('Sharing needs the Android app.'));
+}
+
 export function cancelExport(): Promise<void> {
   return Promise.resolve();
 }

@@ -35,7 +35,8 @@ import { clamp } from '@/lib/gestures';
 import { openSeekableCopy, pickSubtitleFile } from '@/lib/navigation';
 import { getSidecars } from '@/lib/sidecars';
 import { setPreference, usePreferences } from '@/lib/preferences';
-import { clearResume, getResume, saveResume, startPosition } from '@/lib/resume';
+import { clearResume, getResume, isFinished, saveResume, startPosition } from '@/lib/resume';
+import { setWatched } from '@/lib/watched';
 import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS, type SmoothingMode } from '@/lib/settings-schema';
 
 type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | null;
@@ -184,6 +185,8 @@ export default function PlayerScreen() {
     const durationMs = ev.durationMs > 0 ? ev.durationMs : libraryDurationMs;
     const seekable = ev.seekable !== false;
     setPos({ positionMs: ev.positionMs, durationMs, bufferedMs: ev.bufferedMs, seekable });
+    // Into the credits counts as watched (a tick in the library).
+    if (isFinished(ev.positionMs, durationMs)) setWatched(id, true);
     if (seekable && Date.now() - lastSaved.current > 5000 && durationMs > 0) {
       lastSaved.current = Date.now();
       saveResume(id, { positionMs: ev.positionMs, durationMs, title, uri: params.uri });
@@ -377,6 +380,7 @@ export default function PlayerScreen() {
         onEnd={() => {
           setEnded(true);
           clearResume(id);
+          setWatched(id, true);
         }}
         onError={(e) => (e.nativeEvent.fatal ? setFatal(e.nativeEvent.message) : showToast(e.nativeEvent.message))}
         onTracks={(e) => setTracks(e.nativeEvent)}

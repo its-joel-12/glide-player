@@ -10,6 +10,7 @@ declare class GlideEngineNative extends NativeModule<Events> {
   setVolume(fraction: number): number;
   exportSmooth(options: ExportOptions): Promise<ExportResult>;
   cancelExport(): Promise<void>;
+  shareVideo(uri: string, title: string): Promise<void>;
 }
 
 /** null on platforms without the native engine yet (iOS, web). */
@@ -34,6 +35,12 @@ export function setVolume(fraction: number): number {
 export function exportSmooth(options: ExportOptions): Promise<ExportResult> {
   if (!native) return Promise.reject(new Error('Saving smooth videos needs the Android app.'));
   return native.exportSmooth(options);
+}
+
+/** Android share sheet for a gallery video (content:// URI). */
+export function shareVideo(uri: string, title: string): Promise<void> {
+  if (!native) return Promise.reject(new Error('Sharing needs the Android app.'));
+  return native.shareVideo(uri, title);
 }
 
 export function cancelExport(): Promise<void> {

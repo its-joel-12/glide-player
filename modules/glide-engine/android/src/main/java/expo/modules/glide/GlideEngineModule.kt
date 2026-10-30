@@ -1,6 +1,9 @@
 package expo.modules.glide
 
+import android.content.ClipData
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.media.AudioManager
 import androidx.media3.common.C
 import expo.modules.kotlin.Promise
@@ -49,6 +52,20 @@ class GlideEngineModule : Module() {
         sendEvent("onExportProgress", mapOf("progress" to p))
       }.also { exporter = it }
       ex.start(options, promise)
+    }.runOnQueue(Queues.MAIN)
+
+    // Opens Android's share sheet for a video (content:// from the gallery, or a file in the app's storage).
+    AsyncFunction("shareVideo") { uri: String, title: String ->
+      val activity = appContext.currentActivity ?: throw Exceptions.MissingActivity()
+      val target = Uri.parse(uri)
+      val send = Intent(Intent.ACTION_SEND).apply {
+        type = context.contentResolver.getType(target) ?: "video/*"
+        putExtra(Intent.EXTRA_STREAM, target)
+        putExtra(Intent.EXTRA_TITLE, title)
+        clipData = ClipData.newRawUri(title, target)
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      activity.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("cancelExport") {
