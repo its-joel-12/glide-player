@@ -117,6 +117,8 @@ export default function PlayerScreen() {
   }, [pos]);
 
   const smoothingAvailable = info?.smoothing ?? true;
+  // Split compare shows the original next to whatever processing is on (smoothing and/or upscaling).
+  const compareOn = compare && (prefs.mode !== 'off' || prefs.upscale);
 
   // ---- feedback helpers
   const flashHud = useCallback((h: Hud | null, ms = 700) => {
@@ -222,6 +224,10 @@ export default function PlayerScreen() {
     flashHud({ kind: 'text', label: m === 'memc' ? 'MEMC on' : m === 'blend' ? 'Blend' : 'Smoothing off' }, 900);
   };
   const cycleMode = () => setMode(MODES[(MODES.indexOf(prefs.mode) + 1) % MODES.length]);
+  const toggleUpscale = () => {
+    setPreference('upscale', !prefs.upscale);
+    flashHud({ kind: 'text', label: prefs.upscale ? 'Upscaling off' : 'Upscaling on' }, 900);
+  };
   const cycleResize = () => {
     const next = RESIZE[(RESIZE.indexOf(resizeMode) + 1) % RESIZE.length];
     setResizeMode(next);
@@ -287,9 +293,10 @@ export default function PlayerScreen() {
         flashHud({ kind: 'volume', value: volume.current }, 600);
       } else if (k === 'm') cycleMode();
       else if (k === 'c') {
-        if (prefs.mode === 'off') setMode('memc');
+        if (prefs.mode === 'off' && !prefs.upscale) setMode('memc');
         setCompare((c) => !c);
       } else if (k === 'v') setVectors((v) => !v);
+      else if (k === 'u') toggleUpscale();
       else if (k === 'f') toggleFullscreen();
       else return;
       e.preventDefault();
@@ -364,9 +371,11 @@ export default function PlayerScreen() {
         mode={prefs.mode}
         quality={prefs.quality}
         targetFps={prefs.targetFps}
-        compare={compare && prefs.mode !== 'off'}
+        compare={compareOn}
         split={split}
         showVectors={vectors}
+        upscale={prefs.upscale}
+        sharpness={prefs.sharpness}
         resizeMode={resizeMode}
         pipEnabled={prefs.pip}
         backgroundAudio={prefs.backgroundAudio}
@@ -500,7 +509,7 @@ export default function PlayerScreen() {
                   }}
                   onCycleMode={cycleMode}
                   onToggleCompare={() => {
-                    if (prefs.mode === 'off') setMode('memc');
+                    if (prefs.mode === 'off' && !prefs.upscale) setMode('memc');
                     setCompare((c) => !c);
                   }}
                   onOpenSmoothing={() => setSheet('smoothing')}
@@ -519,7 +528,7 @@ export default function PlayerScreen() {
             </>
           )}
 
-          {compare && prefs.mode !== 'off' ? (
+          {compareOn ? (
             <>
               <GestureDetector gesture={splitDrag}>
                 <View style={[styles.splitHandle, { left: rect.x + split * rect.w - 22 }]} accessibilityLabel="Split line" accessibilityHint="Drag to move">
@@ -533,15 +542,15 @@ export default function PlayerScreen() {
                   Original
                 </ThemedText>
                 <ThemedText type="label" color={Screen.onAccent} style={[styles.tag, styles.tagOn]}>
-                  {prefs.mode === 'memc' ? 'MEMC' : 'Blend'}
+                  {processedLabel(prefs.mode, prefs.upscale)}
                 </ThemedText>
               </View>
             </>
           ) : null}
 
           {prefs.showStats ? (
-            <View pointerEvents="none" style={[styles.stats, { top: insets.top + (showControls ? 64 : 12) + (compare && prefs.mode !== 'off' ? 34 : 0), right: insets.right + 12 }]}>
-              {statsLines(stats, sourceFps, prefs.mode, paused, `${containerLabel(info?.container)}${pos.seekable ? '' : ' · no seek index'}`).map((line, i) => (
+            <View pointerEvents="none" style={[styles.stats, { top: insets.top + (showControls ? 64 : 12) + (compareOn ? 34 : 0), right: insets.right + 12 }]}>
+              {statsLines(stats, sourceFps, prefs.mode, prefs.upscale, paused, `${containerLabel(info?.container)}${pos.seekable ? '' : ' · no seek index'}`).map((line, i) => (
                 <ThemedText key={i} font="mono" color={i === 0 ? Screen.text : Screen.textDim} style={styles.statsText}>
                   {line}
                 </ThemedText>
@@ -581,7 +590,7 @@ export default function PlayerScreen() {
         onMode={setMode}
         compare={compare}
         onCompare={(v) => {
-          if (v && prefs.mode === 'off') setMode('memc');
+          if (v && prefs.mode === 'off' && !prefs.upscale) setMode('memc');
           setCompare(v);
         }}
         vectors={vectors}
@@ -594,6 +603,12 @@ export default function PlayerScreen() {
         sourceFps={sourceFps}
         showStats={prefs.showStats}
         onShowStats={(v) => setPreference('showStats', v)}
+        upscale={prefs.upscale}
+        onUpscale={(v) => setPreference('upscale', v)}
+        sharpness={prefs.sharpness}
+        onSharpness={(v) => setPreference('sharpness', v)}
+        videoWidth={info?.width ?? 0}
+        videoHeight={info?.height ?? 0}
       />
       <TracksSheet
         visible={sheet === 'tracks'}
@@ -639,7 +654,25 @@ export default function PlayerScreen() {
 }
 
 /** The frame-rate readout: what the file has, what reaches the screen, what was made up or lost. */
-function statsLines(stats: StatsEvent | null, sourceFps: number, mode: SmoothingMode, paused: boolean, file: string): string[] {
+/** The label over the processed side of split compare. */
+function processedLabel(mode: SmoothingMode, upscale: boolean): string {
+  const smooth = mode === 'memc' ? 'MEMC' : mode === 'blend' ? 'Blend' : '';
+  if (!upscale) return smooth;
+  return smooth ? `${smooth} + upscaled` : 'Upscaled';
+}
+
+/** "Upscaled 640×360 → 1920×1080", or why it isn't. */
+function upscaleLine(stats: StatsEvent): string {
+  const fw = stats.upscaleFromWidth ?? 0;
+  const fh = stats.upscaleFromHeight ?? 0;
+  const tw = stats.upscaleToWidth ?? 0;
+  const th = stats.upscaleToHeight ?? 0;
+  if (!fw || !fh) return 'Upscaling on';
+  if (tw > fw || th > fh) return `Upscaled ${fw}×${fh} → ${tw}×${th}`;
+  return `Upscaling not needed (${fw}×${fh} fills the screen)`;
+}
+
+function statsLines(stats: StatsEvent | null, sourceFps: number, mode: SmoothingMode, upscale: boolean, paused: boolean, file: string): string[] {
   if (!stats) return ['Measuring frame rate…'];
   const shown = Math.round(stats.renderedFps || stats.outputFps);
   const head = `${sourceFps > 0 ? formatFps(sourceFps) : '?'} fps video → ${paused ? 'paused' : `${shown} fps on screen`}`;
@@ -647,7 +680,9 @@ function statsLines(stats: StatsEvent | null, sourceFps: number, mode: Smoothing
   if (stats.smoothing && mode !== 'off') parts.push(`made ${Math.round(stats.generatedFps)}/s`);
   parts.push(`dropped ${Math.round(stats.droppedFps)}/s`, `${Math.round(stats.displayHz)} Hz`);
   const state = mode === 'off' || !stats.smoothing ? 'Smoothing off' : stats.motion ? (mode === 'memc' ? 'MEMC active' : 'Blend active') : 'Smoothing idle';
-  return [head, parts.join(' · '), file.replace(/^ · /, '') ? `${state} · ${file.replace(/^ · /, '')}` : state];
+  const lines = [head, parts.join(' · '), file.replace(/^ · /, '') ? `${state} · ${file.replace(/^ · /, '')}` : state];
+  if (upscale && stats.smoothing) lines.push(upscaleLine(stats));
+  return lines;
 }
 
 const styles = StyleSheet.create({

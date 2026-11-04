@@ -77,6 +77,11 @@ export type StatsEvent = {
   displayHz: number;
   motion: boolean;
   smoothing: boolean;
+  /** Live upscaling: size of the video going in and of the picture coming out (equal when not scaling). */
+  upscaleFromWidth?: number;
+  upscaleFromHeight?: number;
+  upscaleToWidth?: number;
+  upscaleToHeight?: number;
 };
 export type PlaybackStateEvent = { isPlaying: boolean; playWhenReady: boolean; buffering: boolean; ended: boolean };
 export type Track = { id: string; label: string; language: string; selected: boolean };
@@ -98,6 +103,13 @@ export type GlidePlayerProps = {
   /** 0..1 from the left. */
   split?: number;
   showVectors?: boolean;
+  /**
+   * Live upscaling: videos smaller than the screen are resampled on the GPU with an edge-directed
+   * filter and sharpened, so low-resolution and pixelated videos look crisper. Works with smoothing.
+   */
+  upscale?: boolean;
+  /** Sharpening that goes with upscaling, 0..1 (0.5 by default). */
+  sharpness?: number;
   resizeMode?: ResizeMode;
   pipEnabled?: boolean;
   backgroundAudio?: boolean;
@@ -131,7 +143,7 @@ export type GlidePlayerRef = {
 export type ExportOptions = {
   uri: string;
   title: string;
-  /** Frames per second of the saved video. */
+  /** Frames per second of the saved video; 0 = keep the original (no smoothing, for upscaling only). */
   fps: number;
   /** 1 = normal speed; 2, 4 or 8 = that many times slower. */
   slowMotion: number;
@@ -146,6 +158,12 @@ export type ExportOptions = {
    * fps, slowMotion and quality are ignored.
    */
   remux?: boolean;
+  /**
+   * AI upscaling (Android): 2 or 4 = that many times bigger, using a small super-resolution network
+   * (Real-ESRGAN general x4v3) on every frame. The result is capped at 3840×2160. 1 or missing = off.
+   * With fps 0 the copy keeps the original frame rate and no frames are made up (upscaling only).
+   */
+  upscale?: number;
 };
 export type ExportResult = {
   /** content:// in the gallery (Movies/Glide), or the file itself on older Android. */

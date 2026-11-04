@@ -17,6 +17,7 @@ import androidx.media3.session.MediaSessionService
 import expo.modules.glide.memc.MemcEffect
 import expo.modules.glide.memc.MemcSettings
 import expo.modules.glide.memc.MemcStats
+import expo.modules.glide.upscale.LiveUpscaleEffect
 
 /**
  * One player for the whole app, shared by the player screen and the background playback
@@ -89,7 +90,10 @@ internal object PlayerHolder {
         )
       )
       .build()
-    if (withEffects) p.setVideoEffects(listOf<Effect>(MemcEffect(settings, stats, isExport = false)))
+    if (withEffects) {
+      // Smoothing first (on the video's own size), then upscaling to the screen for every frame shown.
+      p.setVideoEffects(listOf<Effect>(MemcEffect(settings, stats, isExport = false), LiveUpscaleEffect(settings, stats)))
+    }
     // Count what really reaches the screen, for the frame-rate readout.
     p.setVideoFrameMetadataListener { _, _, _, _ -> timing.renderedFrames.incrementAndGet() }
     p.addAnalyticsListener(object : AnalyticsListener {

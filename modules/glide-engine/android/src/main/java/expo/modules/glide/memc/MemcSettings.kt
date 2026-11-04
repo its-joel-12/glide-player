@@ -33,6 +33,13 @@ internal class MemcSettings {
   @Volatile var showVectors: Boolean = false
   /** Frames further apart than this are not interpolated (seeks, gaps, slide shows). */
   @Volatile var maxGapUs: Long = 250_000L
+  /** Live upscaling: resample small videos to the size they're shown at, edge-directed, then sharpen. */
+  @Volatile var upscale: Boolean = false
+  /** Sharpening after upscaling, 0..1. */
+  @Volatile var sharpness: Float = 0.5f
+  /** Size of the picture on screen in pixels (the video surface); 0 = unknown. */
+  @Volatile var viewWidth: Int = 0
+  @Volatile var viewHeight: Int = 0
 
   data class Snapshot(
     val mode: Int,
@@ -43,9 +50,13 @@ internal class MemcSettings {
     val split: Float,
     val showVectors: Boolean,
     val maxGapUs: Long,
+    val upscale: Boolean,
+    val sharpness: Float,
+    val viewWidth: Int,
+    val viewHeight: Int,
   )
 
-  fun snapshot() = Snapshot(mode, targetFps, speed, quality, compare, split, showVectors, maxGapUs)
+  fun snapshot() = Snapshot(mode, targetFps, speed, quality, compare, split, showVectors, maxGapUs, upscale, sharpness, viewWidth, viewHeight)
 
   companion object {
     const val MODE_OFF = 0
@@ -60,6 +71,11 @@ internal class MemcStats {
   val outputFrames = AtomicLong()
   val generatedFrames = AtomicLong()
   @Volatile var motionActive = false
+  /** Live upscaling: size of the video going in and of the picture coming out (equal when it isn't scaling). */
+  @Volatile var upscaleInWidth = 0
+  @Volatile var upscaleInHeight = 0
+  @Volatile var upscaleOutWidth = 0
+  @Volatile var upscaleOutHeight = 0
 
   fun onInput() {
     inputFrames.incrementAndGet()

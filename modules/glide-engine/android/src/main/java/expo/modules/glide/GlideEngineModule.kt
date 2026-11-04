@@ -93,6 +93,8 @@ class GlideEngineModule : Module() {
       Prop("compare") { view: GlidePlayerView, compare: Boolean -> view.setCompare(compare) }
       Prop("split") { view: GlidePlayerView, split: Double -> view.setSplit(split) }
       Prop("showVectors") { view: GlidePlayerView, show: Boolean -> view.setShowVectors(show) }
+      Prop("upscale") { view: GlidePlayerView, upscale: Boolean -> view.setUpscale(upscale) }
+      Prop("sharpness") { view: GlidePlayerView, sharpness: Double -> view.setSharpness(sharpness) }
       Prop("resizeMode") { view: GlidePlayerView, mode: String -> view.setResizeMode(mode) }
       Prop("pipEnabled") { view: GlidePlayerView, enabled: Boolean -> view.setPipEnabled(enabled) }
       Prop("backgroundAudio") { view: GlidePlayerView, enabled: Boolean -> view.setBackgroundAudio(enabled) }

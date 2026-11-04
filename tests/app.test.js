@@ -200,5 +200,43 @@ const ktShaders = Object.fromEntries([...kt.matchAll(/const val (\w+) = """([\s\
 eq(Object.keys(ktShaders).sort(), Object.keys(web).sort(), 'same shader list on Android and web');
 eq(Object.keys(ktShaders).every((k) => ktShaders[k] === web[k]), true, 'shader sources identical on Android and web');
 
+// live upscaling: output size and settings
+const eng = require('../modules/glide-engine/src/web/engine.ts');
+eq(eng.upscaleSize(640, 360, 1920, 1080), [1920, 1080], '360p on a 1080p screen → 1080p');
+eq(eng.upscaleSize(480, 360, 2400, 1080), [1440, 1080], '4:3 fits by height');
+eq(eng.upscaleSize(160, 90, 2560, 1440), [640, 360], 'at most 4×');
+eq(eng.upscaleSize(1920, 1080, 2400, 1080), [1920, 1080], 'already as big as the screen → unchanged');
+eq(eng.upscaleSize(1280, 720, 1400, 788), [1280, 720], 'less than 1.15× → unchanged');
+eq(eng.upscaleSize(1280, 720, 3840, 2160), [3840, 2160], '720p on a 4K screen → 4K');
+eq(eng.upscaleSize(1000, 1000, 8000, 8000).every((v) => v % 2 === 0) && eng.upscaleSize(1000, 1000, 8000, 8000)[0] * eng.upscaleSize(1000, 1000, 8000, 8000)[1] <= 3840 * 2160 + 4000, true, 'capped near 4K pixels, even sizes');
+eq(eng.upscaleSize(640, 360, 0, 0), [640, 360], 'unknown screen → unchanged');
+eq(eng.upscaleSize(641, 361, 1920, 1080).every((v) => v % 2 === 0), true, 'odd sizes rounded to even');
+const upKt = fs.readFileSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/java/expo/modules/glide/upscale/LiveUpscaler.kt'), 'utf8');
+const ktConst = (n) => Number(eval(upKt.match(new RegExp(`const val ${n} = ([^\\n]+)`))[1].replace(/L/g, '').replace(/f$/, '')));
+eq([ktConst('MAX_SCALE'), ktConst('MIN_SCALE'), ktConst('MAX_OUTPUT_PIXELS')], [eng.UPSCALE_MAX_SCALE, eng.UPSCALE_MIN_SCALE, eng.UPSCALE_MAX_OUTPUT_PIXELS], 'upscale limits identical on Android and web');
+eq([s.normalizePreferences({}).upscale, s.normalizePreferences({}).sharpness], [false, 0.5], 'upscaling off, medium sharpening by default');
+eq(s.normalizePreferences({ upscale: true, sharpness: 0.8 }).sharpness, 0.8, 'saved sharpness kept');
+eq(s.normalizePreferences({ upscale: 'yes', sharpness: 0.7 }), { ...s.DefaultPreferences }, 'bad upscale values → defaults');
+
+// AI upscaling for saved copies: tiles and output size
+const up = require('../src/lib/upscale-plan.ts');
+eq(up.upscaledSize(480, 270, 4), [1920, 1080], '270p ×4 → 1080p');
+eq(up.upscaledSize(1280, 720, 4), [3840, 2160], '720p ×4 capped to 4K');
+eq(up.upscaledSize(1920, 1080, 2), [3840, 2160], '1080p ×2 → 4K');
+eq(up.upscaledSize(3840, 2160, 2), null, '4K can\'t go bigger');
+eq(up.upscaledSize(640, 480, 2), [1280, 960], '480p ×2');
+eq(up.upscaledSize(1080, 1920, 4), [2160, 3840], 'portrait capped to 4K');
+eq(up.tileCount(480, 270), 6, '270p: 3×2 tiles of 168 px');
+eq(up.canUpscale(1920, 1080), false, 'the network runs on up to 1280 px wide (or tall) videos');
+eq(up.canUpscale(1280, 720), true, '720p can be AI-upscaled');
+const nKt = fs.readFileSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/java/expo/modules/glide/upscale/NeuralUpscaler.kt'), 'utf8');
+const nConst = (n) => Number(nKt.match(new RegExp(`const val ${n} = ([0-9.]+)`))[1]);
+eq(
+  ['MODEL_SCALE', 'TILE', 'PAD', 'MAX_INPUT_LONG', 'MAX_INPUT_SHORT', 'MAX_OUTPUT_LONG', 'MAX_OUTPUT_SHORT', 'MIN_GAIN'].map(nConst),
+  [up.NEURAL_SCALE, up.NEURAL_TILE, up.NEURAL_PAD, up.MAX_INPUT_LONG, up.MAX_INPUT_SHORT, up.MAX_OUTPUT_LONG, up.MAX_OUTPUT_SHORT, up.MIN_GAIN],
+  'AI upscaling limits identical on Android and in the app',
+);
+eq(fs.existsSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/assets/glide-sr-x4.tflite')), true, 'upscaling model is bundled');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

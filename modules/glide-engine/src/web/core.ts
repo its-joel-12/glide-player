@@ -27,6 +27,10 @@ export type CoreSettings = {
   compare: boolean;
   split: number;
   vectors: boolean;
+  /** Live upscaling of videos smaller than the screen (edge-directed resample + sharpening). */
+  upscale: boolean;
+  /** 0..1 */
+  sharpness: number;
   resize: ResizeMode;
   /** Seconds; positive = sound later than the picture. */
   audioDelay: number;
@@ -48,7 +52,19 @@ export const MIN_AUDIO_DELAY = -0.5;
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[xs.length >> 1];
 
 export class WebPlayerCore {
-  settings: CoreSettings = { mode: 2, quality: 'balanced', targetFps: 0, compare: false, split: 0.5, vectors: false, resize: 'fit', audioDelay: 0, subtitleDelay: 0 };
+  settings: CoreSettings = {
+    mode: 2,
+    quality: 'balanced',
+    targetFps: 0,
+    compare: false,
+    split: 0.5,
+    vectors: false,
+    upscale: false,
+    sharpness: 0.5,
+    resize: 'fit',
+    audioDelay: 0,
+    subtitleDelay: 0,
+  };
 
   private readonly video: VideoWithRVFC;
   private readonly canvas: HTMLCanvasElement;
@@ -550,6 +566,10 @@ export class WebPlayerCore {
         displayHz: hz,
         motion: this.settings.mode === 2 && !!this.engine?.motionSupported,
         smoothing: this.engine != null,
+        upscaleFromWidth: this.engine?.width ?? 0,
+        upscaleFromHeight: this.engine?.height ?? 0,
+        upscaleToWidth: this.engine?.upscaledTo[0] || this.engine?.width || 0,
+        upscaleToHeight: this.engine?.upscaledTo[1] || this.engine?.height || 0,
       });
       this.counts.input = 0;
       this.counts.output = 0;
@@ -567,11 +587,12 @@ export class WebPlayerCore {
       return;
     }
     const s = this.settings;
-    const split = s.compare && s.mode !== 0 ? s.split : -1;
+    const split = s.compare && (s.mode !== 0 || s.upscale) ? s.split : -1;
+    const up = { on: s.upscale, sharpness: s.sharpness };
     const last = this.frames[this.frames.length - 1];
     if (!this.isPlaying()) {
       const fields = s.vectors && last.fieldsFrom >= 0;
-      e.render(last, last, 0, 0, fields, split, s.vectors, this.rect());
+      e.render(last, last, 0, 0, fields, split, s.vectors, this.rect(), up);
       this.shownTime = last.t;
       return;
     }
@@ -596,7 +617,7 @@ export class WebPlayerCore {
     }
     const mode = a === b ? 0 : s.mode;
     const fields = a === b ? s.vectors && a.fieldsFrom >= 0 : s.mode === 2 && b.fieldsFrom === a.serial;
-    e.render(a, b, t, mode, fields, split, s.vectors, this.rect());
+    e.render(a, b, t, mode, fields, split, s.vectors, this.rect(), up);
     const shown = mode === 0 ? a.t : a.t + t * (b.t - a.t);
     if (shown !== this.counts.lastShown) {
       this.counts.output++;

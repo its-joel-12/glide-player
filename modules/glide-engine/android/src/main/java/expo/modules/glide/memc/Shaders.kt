@@ -222,4 +222,158 @@ void main() {
   o = vec4(col, texture(uA, p).a);
 }
 """
+
+  /**
+   * Live upscaling, step 1: edge-directed resampling to the output size (the idea behind AMD FSR 1 EASU).
+   * Each output pixel looks at the 12 nearest source pixels, works out which way the local edge runs, and
+   * uses a Lanczos-like kernel stretched along that edge, so edges stay sharp instead of going soft or
+   * blocky. The result is clamped to the 4 nearest pixels so it never rings. Left of uSplit: plain bilinear.
+   */
+  const val UPSCALE = """#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform vec2 uSrcSize;
+uniform float uSplit;
+in vec2 vUV;
+out vec4 o;
+float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+vec3 T(ivec2 p) { return texelFetch(uSrc, clamp(p, ivec2(0), ivec2(uSrcSize) - 1), 0).rgb; }
+void edge(inout vec2 dir, inout float len, float w, float l, float c, float r, float u, float d) {
+  float dx = r - l;
+  float dy = d - u;
+  float ex = clamp(abs(dx) / max(max(abs(c - l), abs(r - c)), 1e-5), 0.0, 1.0);
+  float ey = clamp(abs(dy) / max(max(abs(c - u), abs(d - c)), 1e-5), 0.0, 1.0);
+  dir += vec2(dx, dy) * w;
+  len += (ex * ex + ey * ey) * w;
+}
+void tap(inout vec3 acc, inout float wsum, vec3 c, vec2 off, vec2 dir, vec2 len2, float lob, float clp) {
+  vec2 v = vec2(off.x * dir.x + off.y * dir.y, off.y * dir.x - off.x * dir.y) * len2;
+  float d2 = min(dot(v, v), clp);
+  float wb = 0.4 * d2 - 1.0;
+  float wa = lob * d2 - 1.0;
+  float w = (1.5625 * wb * wb - 0.5625) * wa * wa;
+  acc += c * w;
+  wsum += w;
+}
+void main() {
+  vec4 here = texture(uSrc, vUV);
+  if (uSplit >= 0.0 && vUV.x < uSplit) {
+    o = here;
+    return;
+  }
+  vec2 pp = vUV * uSrcSize - 0.5;
+  vec2 fp = floor(pp);
+  vec2 f = pp - fp;
+  ivec2 q = ivec2(fp);
+  vec3 cb = T(q + ivec2(0, -1));
+  vec3 cc = T(q + ivec2(1, -1));
+  vec3 ce = T(q + ivec2(-1, 0));
+  vec3 cf = T(q);
+  vec3 cg = T(q + ivec2(1, 0));
+  vec3 ch = T(q + ivec2(2, 0));
+  vec3 ci = T(q + ivec2(-1, 1));
+  vec3 cj = T(q + ivec2(0, 1));
+  vec3 ck = T(q + ivec2(1, 1));
+  vec3 cl = T(q + ivec2(2, 1));
+  vec3 cn = T(q + ivec2(0, 2));
+  vec3 co = T(q + ivec2(1, 2));
+  float lb = lum(cb), lc = lum(cc), le = lum(ce), lf = lum(cf), lg = lum(cg), lh = lum(ch);
+  float li = lum(ci), lj = lum(cj), lk = lum(ck), ll = lum(cl), ln = lum(cn), lo = lum(co);
+  vec2 dir = vec2(0.0);
+  float len = 0.0;
+  edge(dir, len, (1.0 - f.x) * (1.0 - f.y), le, lf, lg, lb, lj);
+  edge(dir, len, f.x * (1.0 - f.y), lf, lg, lh, lc, lk);
+  edge(dir, len, (1.0 - f.x) * f.y, li, lj, lk, lf, ln);
+  edge(dir, len, f.x * f.y, lj, lk, ll, lg, lo);
+  float dir2 = dot(dir, dir);
+  dir = dir2 < 1.0 / 32768.0 ? vec2(1.0, 0.0) : dir * inversesqrt(dir2);
+  len = 0.5 * len;
+  len *= len;
+  float stretch = 1.0 / max(abs(dir.x), abs(dir.y));
+  vec2 len2 = vec2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);
+  float lob = 0.5 - 0.29 * len;
+  float clp = 1.0 / lob;
+  vec3 acc = vec3(0.0);
+  float wsum = 0.0;
+  tap(acc, wsum, cb, vec2(0.0, -1.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, cc, vec2(1.0, -1.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, ce, vec2(-1.0, 0.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, cf, -f, dir, len2, lob, clp);
+  tap(acc, wsum, cg, vec2(1.0, 0.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, ch, vec2(2.0, 0.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, ci, vec2(-1.0, 1.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, cj, vec2(0.0, 1.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, ck, vec2(1.0, 1.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, cl, vec2(2.0, 1.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, cn, vec2(0.0, 2.0) - f, dir, len2, lob, clp);
+  tap(acc, wsum, co, vec2(1.0, 2.0) - f, dir, len2, lob, clp);
+  vec3 mn = min(min(cf, cg), min(cj, ck));
+  vec3 mx = max(max(cf, cg), max(cj, ck));
+  o = vec4(clamp(acc / max(wsum, 1e-4), mn, mx), here.a);
+}
+"""
+
+  /**
+   * Live upscaling, step 2: contrast-adaptive sharpening at the output size (like FSR 1 RCAS).
+   * Sharpens by at most what the 4 neighbours allow, so it doesn't clip or halo, and less on isolated
+   * noise. uSharp 0..1. Left of uSplit: unchanged; draws the split line.
+   */
+  const val SHARPEN = """#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform float uSharp;
+uniform float uSplit;
+uniform float uLineW;
+in vec2 vUV;
+out vec4 o;
+float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main() {
+  ivec2 size = textureSize(uSrc, 0);
+  ivec2 p = clamp(ivec2(vUV * vec2(size)), ivec2(0), size - 1);
+  vec4 e4 = texelFetch(uSrc, p, 0);
+  vec3 e = e4.rgb;
+  vec3 col = e;
+  if (uSharp > 0.0 && !(uSplit >= 0.0 && vUV.x < uSplit)) {
+    vec3 b = texelFetch(uSrc, clamp(p + ivec2(0, 1), ivec2(0), size - 1), 0).rgb;
+    vec3 d = texelFetch(uSrc, clamp(p - ivec2(1, 0), ivec2(0), size - 1), 0).rgb;
+    vec3 f = texelFetch(uSrc, clamp(p + ivec2(1, 0), ivec2(0), size - 1), 0).rgb;
+    vec3 h = texelFetch(uSrc, clamp(p - ivec2(0, 1), ivec2(0), size - 1), 0).rgb;
+    vec3 mn = min(min(b, d), min(f, h));
+    vec3 mx = max(max(b, d), max(f, h));
+    vec3 hitMin = min(mn, e) / max(4.0 * mx, vec3(1e-4));
+    vec3 hitMax = (1.0 - max(mx, e)) / min(4.0 * mn - 4.0, vec3(-1e-4));
+    vec3 l3 = max(-hitMin, hitMax);
+    float lobe = max(-0.1875, min(max(l3.r, max(l3.g, l3.b)), 0.0)) * uSharp;
+    float lb = lum(b), ld = lum(d), lf = lum(f), lh = lum(h);
+    float range = max(max(lb, ld), max(lf, lh)) - min(min(lb, ld), min(lf, lh));
+    float nz = clamp(abs(0.25 * (lb + ld + lf + lh) - lum(e)) / max(range, 1e-4), 0.0, 1.0);
+    lobe *= 1.0 - 0.5 * nz;
+    col = (lobe * (b + d + f + h) + e) / (4.0 * lobe + 1.0);
+  }
+  if (uSplit >= 0.0 && abs(vUV.x - uSplit) < uLineW) col = vec3(1.0);
+  o = vec4(col, e4.a);
+}
+"""
+
+  /**
+   * Area-averaged downscale (16 bilinear taps over the footprint of one output pixel, uFootprint in UV).
+   * Saved copies: brings the 4x AI upscale down to the size asked for.
+   */
+  const val RESAMPLE = """#version 300 es
+precision highp float;
+uniform sampler2D uSrc;
+uniform vec2 uFootprint;
+in vec2 vUV;
+out vec4 o;
+void main() {
+  vec4 acc = vec4(0.0);
+  for (int j = 0; j < 4; j++) {
+    for (int i = 0; i < 4; i++) {
+      vec2 off = ((vec2(float(i), float(j)) + 0.5) * 0.25 - 0.5) * uFootprint;
+      acc += texture(uSrc, vUV + off);
+    }
+  }
+  o = acc * (1.0 / 16.0);
+}
+"""
 }

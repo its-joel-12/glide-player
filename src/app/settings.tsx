@@ -13,7 +13,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { setPreference, usePreferences } from '@/lib/preferences';
-import { AUDIO_DELAY_RANGE, HoldSpeedOptions, SeekStepOptions, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS } from '@/lib/settings-schema';
+import { AUDIO_DELAY_RANGE, HoldSpeedOptions, SeekStepOptions, SharpnessOptions, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS } from '@/lib/settings-schema';
 
 const isWeb = Platform.OS === 'web';
 
@@ -110,6 +110,30 @@ export default function SettingsScreen() {
             />
           </Field>
           <Toggle label="Show frame rate on the player" detail="Video fps, frames reaching the screen, made-up and dropped frames." value={prefs.showStats} onChange={(v) => setPreference('showStats', v)} />
+        </Group>
+
+        <Group title="Upscaling">
+          <Toggle
+            label="Sharper low-resolution video"
+            detail="Videos smaller than your screen (360p, 480p, pixelated clips) are resampled to the screen’s size along their edges and sharpened, on the GPU, while they play. Toggle it in the player with the Picture button (U on a keyboard)."
+            value={prefs.upscale}
+            onChange={(v) => setPreference('upscale', v)}
+          />
+          {prefs.upscale ? (
+            <Field label="Sharpening" detail="Strong brings out more detail but also more compression blocks.">
+              <Segmented
+                options={SharpnessOptions.map((o) => ({ value: o.value as number, label: o.label }))}
+                value={prefs.sharpness}
+                onChange={(v) => setPreference('sharpness', v)}
+                dense
+              />
+            </Field>
+          ) : null}
+          {isWeb ? null : (
+            <ThemedText type="caption" themeColor="textSecondary">
+              For the sharpest result, save an AI-upscaled copy from a video’s menu (Save … copy → Sharper). It takes longer but rebuilds real detail.
+            </ThemedText>
+          )}
         </Group>
 
         <Group title="Playback">

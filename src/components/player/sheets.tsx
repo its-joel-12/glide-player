@@ -8,7 +8,8 @@ import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFps } from '@/lib/format';
-import { AUDIO_DELAY_RANGE, formatDelay, SUBTITLE_DELAY_RANGE, type AnalysisQuality, type SmoothingMode, type SubtitleStyle } from '@/lib/settings-schema';
+import { formatResolution } from '@/lib/format';
+import { AUDIO_DELAY_RANGE, formatDelay, SharpnessOptions, SUBTITLE_DELAY_RANGE, type AnalysisQuality, type SmoothingMode, type SubtitleStyle } from '@/lib/settings-schema';
 import type { Track, TracksEvent } from 'glide-engine';
 
 function ToggleRow({ label, detail, value, onChange }: { label: string; detail?: string; value: boolean; onChange: (v: boolean) => void }) {
@@ -46,11 +47,19 @@ export function SmoothingSheet(p: {
   sourceFps: number;
   showStats: boolean;
   onShowStats: (v: boolean) => void;
+  upscale: boolean;
+  onUpscale: (v: boolean) => void;
+  sharpness: number;
+  onSharpness: (v: number) => void;
+  /** Size of the video, for the upscaling note (0 = unknown). */
+  videoWidth: number;
+  videoHeight: number;
 }) {
+  const res = formatResolution(p.videoWidth, p.videoHeight);
   const maxHz = Math.max(60, ...p.refreshRates);
   const fpsOptions = [0, ...[60, 90, 120, 144].filter((r) => r <= maxHz + 1)].map((v) => ({ value: v, label: v === 0 ? `Auto` : String(v) }));
   return (
-    <Sheet visible={p.visible} title="Motion smoothing" onClose={p.onClose}>
+    <Sheet visible={p.visible} title="Picture" onClose={p.onClose}>
       {!p.available ? (
         <ThemedText themeColor="textSecondary">This video plays without smoothing (its format can’t go through the GPU effect).</ThemedText>
       ) : null}
@@ -94,8 +103,21 @@ export function SmoothingSheet(p: {
         dense
       />
 
+      <ThemedText type="label" themeColor="textSecondary" style={styles.label}>
+        Upscaling
+      </ThemedText>
+      <ToggleRow
+        label="Sharper low-resolution video"
+        detail={`Resamples small or pixelated videos to your screen’s size along their edges, then sharpens them.${res ? ` This video: ${res}.` : ''}`}
+        value={p.upscale}
+        onChange={p.onUpscale}
+      />
+      {p.upscale ? (
+        <Segmented options={SharpnessOptions.map((o) => ({ value: o.value as number, label: o.label }))} value={p.sharpness} onChange={p.onSharpness} dense />
+      ) : null}
+
       <ToggleRow label="Show frame rates" detail="Video fps, frames reaching the screen, made-up and dropped frames." value={p.showStats} onChange={p.onShowStats} />
-      <ToggleRow label="Split compare" detail="Left: original. Right: smoothed. Drag the line." value={p.compare} onChange={p.onCompare} />
+      <ToggleRow label="Split compare" detail="Left: original. Right: smoothed and/or upscaled. Drag the line." value={p.compare} onChange={p.onCompare} />
       <ToggleRow label="Show motion vectors" detail="Colour is direction, strength is speed." value={p.vectors} onChange={p.onVectors} />
     </Sheet>
   );

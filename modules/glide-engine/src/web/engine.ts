@@ -24,12 +24,37 @@ export type Frame = {
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
+/** Live upscaling limits (same as UpscaleSize in the Android engine, upscale/LiveUpscaler.kt). */
+export const UPSCALE_MAX_SCALE = 4;
+export const UPSCALE_MIN_SCALE = 1.15;
+export const UPSCALE_MAX_OUTPUT_PIXELS = 3840 * 2160;
+
+/**
+ * Output size for live upscaling a w×h video shown in a viewW×viewH area: the area's size (fitted,
+ * at most 4× and 4K), or the video's own size when it's about as big already.
+ */
+export function upscaleSize(w: number, h: number, viewW: number, viewH: number): [number, number] {
+  if (w <= 0 || h <= 0 || viewW <= 0 || viewH <= 0) return [w, h];
+  let scale = Math.min(UPSCALE_MAX_SCALE, viewW / w, viewH / h);
+  if (w * h * scale * scale > UPSCALE_MAX_OUTPUT_PIXELS) scale = Math.sqrt(UPSCALE_MAX_OUTPUT_PIXELS / (w * h));
+  if (scale < UPSCALE_MIN_SCALE) return [w, h];
+  const even = (v: number) => Math.max(2, (Math.round(v) + 1) & ~1);
+  return [even(w * scale), even(h * scale)];
+}
+
+/** Live upscaling settings for one render. */
+export type UpscaleOptions = { on: boolean; sharpness: number };
+
 export class WebMotionEngine {
   readonly gl: WebGL2RenderingContext;
   motionSupported: boolean;
   width = 0;
   height = 0;
-  private progs: Record<'copy' | 'luma' | 'motion' | 'median' | 'output', Prog>;
+  private progs: Record<'copy' | 'luma' | 'motion' | 'median' | 'output' | 'upscale' | 'sharpen', Prog>;
+  /** Live upscaling: the picture at the video's size, upscaled, and sharpened (when it can't go straight to the canvas). */
+  private post: { src: Tex | null; up: Tex | null; sharp: Tex | null } = { src: null, up: null, sharp: null };
+  /** Size of the last upscaled picture ([0, 0] when not upscaling), for the stats readout. */
+  upscaledTo: [number, number] = [0, 0];
   private slots: Frame[] = [];
   private scratch: Tex[] = [];
   private levels: [number, number][] = [];
@@ -59,7 +84,15 @@ export class WebMotionEngine {
       if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p) ?? 'link failed');
       return { p, loc: new Map() };
     };
-    this.progs = { copy: make(S.COPY), luma: make(S.LUMA), motion: make(S.MOTION), median: make(S.MEDIAN), output: make(S.OUTPUT) };
+    this.progs = {
+      copy: make(S.COPY),
+      luma: make(S.LUMA),
+      motion: make(S.MOTION),
+      median: make(S.MEDIAN),
+      output: make(S.OUTPUT),
+      upscale: make(S.UPSCALE),
+      sharpen: make(S.SHARPEN),
+    };
     const vao = gl.createVertexArray();
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
@@ -248,14 +281,39 @@ export class WebMotionEngine {
     b.fieldsFrom = a.serial;
   }
 
-  /** Draws the picture at time t (0 = a, 1 = b) into [rect] of the canvas (device pixels). */
-  render(a: Frame, b: Frame, t: number, mode: number, useFields: boolean, split: number, vectors: boolean, rect: Rect) {
+  /** Keeps [slot] of the post-processing textures at w×h. */
+  private postTex(slot: 'src' | 'up' | 'sharp', w: number, h: number): Tex {
+    const cur = this.post[slot];
+    if (cur && cur.w === w && cur.h === h) return cur;
+    this.del(cur);
+    const t = this.target(w, h, this.gl.RGBA8);
+    this.post[slot] = t;
+    return t;
+  }
+
+  /**
+   * Draws the picture at time t (0 = a, 1 = b) into [rect] of the canvas (device pixels).
+   * With [up] on and the video smaller than [rect], it's drawn at the video's size, upscaled
+   * edge-directed to the size on screen and sharpened (the same shaders as the Android engine).
+   */
+  render(a: Frame, b: Frame, t: number, mode: number, useFields: boolean, split: number, vectors: boolean, rect: Rect, up?: UpscaleOptions) {
     const gl = this.gl;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.viewport(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
+    const rw = Math.max(1, Math.round(rect.w));
+    const rh = Math.max(1, Math.round(rect.h));
+    const [uw, uh] = up?.on ? upscaleSize(this.width, this.height, rw, rh) : [this.width, this.height];
+    const upscaling = uw !== this.width || uh !== this.height;
+    this.upscaledTo = upscaling ? [uw, uh] : [0, 0];
+    if (upscaling) {
+      const src = this.postTex('src', this.width, this.height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, src.fbo);
+      gl.viewport(0, 0, src.w, src.h);
+    } else {
+      gl.viewport(Math.round(rect.x), Math.round(rect.y), rw, rh);
+    }
     const fields = useFields && b.forward && b.backward;
     const o = this.use('output');
     o.tex('uA', 0, a.color.id);
@@ -270,6 +328,39 @@ export class WebMotionEngine {
     o.f2('uRes', this.width, this.height);
     o.f('uLineW', 1.5 / Math.max(1, rect.w));
     o.f('uFlowMax', this.width * 0.03);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if (upscaling) this.upscale(split, rect, uw, uh, up?.sharpness ?? 0.5);
+  }
+
+  private upscale(split: number, rect: Rect, uw: number, uh: number, sharpness: number) {
+    const gl = this.gl;
+    const src = this.post.src!;
+    const upTex = this.postTex('up', uw, uh);
+    const u = this.use('upscale');
+    u.tex('uSrc', 0, src.id);
+    u.f2('uSrcSize', src.w, src.h);
+    u.f('uSplit', split);
+    this.drawTo(upTex);
+    // Straight to the canvas when the sizes match; otherwise via a texture and a bilinear copy.
+    const direct = Math.abs(uw - rect.w) <= 1 && Math.abs(uh - rect.h) <= 1;
+    // (Created before binding the sharpen input: making a texture rebinds texture unit 0.)
+    const sharp = direct ? null : this.postTex('sharp', uw, uh);
+    const s = this.use('sharpen');
+    s.tex('uSrc', 0, upTex.id);
+    s.f('uSharp', Math.min(1, Math.max(0, sharpness)));
+    s.f('uSplit', split);
+    s.f('uLineW', 1.5 / Math.max(1, uw));
+    if (direct) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(Math.round(rect.x), Math.round(rect.y), uw, uh);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      return;
+    }
+    this.drawTo(sharp!);
+    const c = this.use('copy');
+    c.tex('uSrc', 0, sharp!.id);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(Math.round(rect.x), Math.round(rect.y), Math.round(rect.w), Math.round(rect.h));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
@@ -297,6 +388,10 @@ export class WebMotionEngine {
 
   release() {
     this.releaseTextures();
+    this.del(this.post.src);
+    this.del(this.post.up);
+    this.del(this.post.sharp);
+    this.post = { src: null, up: null, sharp: null };
     Object.values(this.progs).forEach((p) => this.gl.deleteProgram(p.p));
     this.gl.getExtension('WEBGL_lose_context')?.loseContext();
   }

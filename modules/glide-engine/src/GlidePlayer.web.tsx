@@ -63,6 +63,8 @@ export function GlidePlayer(props: Props) {
     compare = false,
     split = 0.5,
     showVectors = false,
+    upscale = false,
+    sharpness = 0.5,
     resizeMode = 'fit',
     audioDelayMs = 0,
     subtitleDelayMs = 0,
@@ -91,12 +93,14 @@ export function GlidePlayer(props: Props) {
       compare,
       split,
       vectors: showVectors,
+      upscale,
+      sharpness,
       resize: resizeMode,
       audioDelay: audioDelayMs / 1000,
       subtitleDelay: subtitleDelayMs / 1000,
     };
     core.updateAudioDelay();
-  }, [mode, quality, targetFps, compare, split, showVectors, resizeMode, audioDelayMs, subtitleDelayMs]);
+  }, [mode, quality, targetFps, compare, split, showVectors, upscale, sharpness, resizeMode, audioDelayMs, subtitleDelayMs]);
   useEffect(() => {
     if (subtitleStyle) coreRef.current?.setSubtitleStyle(subtitleStyle);
   }, [subtitleStyle]);

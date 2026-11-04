@@ -159,11 +159,15 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
   private fun sendLoad() {
     val format = player.videoFormat
     val size = player.videoSize
+    // The video's own size (player.videoSize is what comes out of the effects, i.e. after upscaling).
+    val turned = format != null && (format.rotationDegrees % 180) != 0
+    val width = if (format != null && format.width > 0) (if (turned) format.height else format.width) else size.width
+    val height = if (format != null && format.height > 0) (if (turned) format.width else format.height) else size.height
     onLoad(
       mapOf(
         "durationMs" to durationMs(),
-        "width" to size.width,
-        "height" to size.height,
+        "width" to width,
+        "height" to height,
         "frameRate" to (format?.frameRate?.takeIf { it > 0 }?.toDouble() ?: 0.0),
         "maxRefreshRate" to DisplayInfo.maxRefreshRate(activity()).toDouble(),
         "smoothing" to PlayerHolder.effectsEnabled,
@@ -265,6 +269,10 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
             "displayHz" to DisplayInfo.currentRefreshRate(activity()).toDouble(),
             "motion" to st.motionActive,
             "smoothing" to PlayerHolder.effectsEnabled,
+            "upscaleFromWidth" to st.upscaleInWidth,
+            "upscaleFromHeight" to st.upscaleInHeight,
+            "upscaleToWidth" to st.upscaleOutWidth,
+            "upscaleToHeight" to st.upscaleOutHeight,
           )
         )
       }
@@ -387,6 +395,16 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
 
   fun setShowVectors(show: Boolean) {
     settings.showVectors = show
+    redrawIfPaused()
+  }
+
+  fun setUpscale(upscale: Boolean) {
+    settings.upscale = upscale
+    redrawIfPaused()
+  }
+
+  fun setSharpness(sharpness: Double) {
+    settings.sharpness = sharpness.toFloat().coerceIn(0f, 1f)
     redrawIfPaused()
   }
 
@@ -612,7 +630,13 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
       applyDisplayRate()
     }
 
-    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = Unit
+    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+      // The surface is sized to the picture on screen: live upscaling resamples to this.
+      val changed = settings.viewWidth != width || settings.viewHeight != height
+      settings.viewWidth = width
+      settings.viewHeight = height
+      if (changed && settings.upscale) redrawIfPaused()
+    }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) = Unit
   }

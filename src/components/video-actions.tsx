@@ -63,8 +63,8 @@ export function VideoActions({ video, onClose, onDeleted }: { video: VideoRef | 
             onPress={run(() => void shareVideo(video.uri, video.title).catch((e: unknown) => Alert.alert('Couldn’t share the video', e instanceof Error ? e.message : String(e))))}
           />
           <SheetOption
-            label="Save smooth or slow-motion copy"
-            detail="Optical-flow retime: 60/120 fps or 2–8× slow motion"
+            label="Save smooth, slow-motion or sharper copy"
+            detail="Optical-flow retime (60/120 fps, 2–8× slow motion) or AI upscaling (2×/4×)"
             onPress={run(() => openExport(video))}
           />
           <SheetOption label="Delete from phone" detail="Removes the file itself" onPress={run(() => void confirmAndDelete(video, onDeleted))} />

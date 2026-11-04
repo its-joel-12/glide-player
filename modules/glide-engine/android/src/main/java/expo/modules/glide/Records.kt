@@ -46,7 +46,7 @@ class SubtitleStyleRecord : Record {
 class ExportOptions : Record {
   @Field val uri: String = ""
   @Field val title: String = "video"
-  /** Frames per second of the saved video. */
+  /** Frames per second of the saved video; 0 = keep the original (no smoothing). */
   @Field val fps: Int = 60
   /** 1 = normal speed; 2, 4 or 8 = that many times slower. */
   @Field val slowMotion: Int = 1
@@ -62,6 +62,8 @@ class ExportOptions : Record {
    * them, so there's no quality loss; others are converted.
    */
   @Field val remux: Boolean = false
+  /** AI upscaling: 2 or 4 times bigger (capped at 4K); 1 = off. With fps 0 nothing else is done. */
+  @Field val upscale: Int = 1
 }
 
 internal object DisplayInfo {

@@ -17,6 +17,10 @@ export type Preferences = {
   quality: AnalysisQuality;
   /** Frames-per-second readout on the player. */
   showStats: boolean;
+  /** Live upscaling: videos smaller than the screen are resampled edge-directed and sharpened. */
+  upscale: boolean;
+  /** Sharpening with upscaling, 0..1 (one of SharpnessOptions). */
+  sharpness: number;
   /** Go into picture-in-picture when leaving the app during playback. */
   pip: boolean;
   /** Keep the sound playing when the app is in the background. */
@@ -65,6 +69,8 @@ export const DefaultPreferences: Preferences = {
   targetFps: 0,
   quality: 'balanced',
   showStats: false,
+  upscale: false,
+  sharpness: 0.5,
   pip: true,
   backgroundAudio: false,
   resume: true,
@@ -88,6 +94,11 @@ const bool = (value: unknown, fallback: boolean) => (typeof value === 'boolean' 
 export const TargetFpsOptions = [0, 60, 90, 120, 144] as const;
 export const SeekStepOptions = [5, 10, 15, 30] as const;
 export const HoldSpeedOptions = [1.5, 2, 3] as const;
+export const SharpnessOptions = [
+  { value: 0.25, label: 'Soft' },
+  { value: 0.5, label: 'Medium' },
+  { value: 0.8, label: 'Strong' },
+] as const;
 
 const hexColor = (value: unknown, fallback: string) => (typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value) ? value.toUpperCase() : fallback);
 const num = (value: unknown, lo: number, hi: number, fallback: number) =>
@@ -142,6 +153,8 @@ export function normalizePreferences(saved: unknown): Preferences {
     targetFps: (TargetFpsOptions as readonly number[]).includes(s.targetFps as number) ? (s.targetFps as number) : d.targetFps,
     quality: oneOf(s.quality, ['fast', 'balanced', 'detailed'] as const, d.quality),
     showStats: bool(s.showStats, d.showStats),
+    upscale: bool(s.upscale, d.upscale),
+    sharpness: SharpnessOptions.some((o) => o.value === s.sharpness) ? (s.sharpness as number) : d.sharpness,
     pip: bool(s.pip, d.pip),
     backgroundAudio: bool(s.backgroundAudio, d.backgroundAudio),
     resume: bool(s.resume, d.resume),

@@ -27,6 +27,8 @@ import androidx.media3.transformer.VideoEncoderSettings
 import expo.modules.glide.memc.MemcEffect
 import expo.modules.glide.memc.MemcSettings
 import expo.modules.glide.memc.Quality
+import expo.modules.glide.upscale.NeuralPlan
+import expo.modules.glide.upscale.NeuralUpscaleEffect
 import expo.modules.kotlin.Promise
 import java.io.File
 
@@ -48,6 +50,13 @@ internal class SmoothExporter(private val context: Context, private val onProgre
   private var dropCacheCopy = false
   private val handler = Handler(Looper.getMainLooper())
   private val progress = ProgressHolder()
+  /** AI upscaling: whether the network ran on the GPU (null = not used / not started). Set on the GL thread. */
+  @Volatile private var aiOnGpu: Boolean? = null
+
+  private companion object {
+    /** Frame rate assumed for the bitrate of upscaled copies that keep the original rate. */
+    const val ASSUMED_SOURCE_FPS = 30
+  }
 
   private class ConstantSpeed(private val speed: Float) : SpeedProvider {
     override fun getSpeed(timeUs: Long): Float = speed
@@ -68,37 +77,74 @@ internal class SmoothExporter(private val context: Context, private val onProgre
       return
     }
     val slow = opts.slowMotion.coerceIn(1, 8)
-    val fps = opts.fps.coerceIn(24, 240)
-    val settings = MemcSettings().apply {
-      mode = MemcSettings.MODE_MEMC
-      targetFps = fps.toFloat()
-      speed = 1f
-      quality = Quality.from(opts.quality)
-      compare = false
-      showVectors = false
-      maxGapUs = 250_000L * slow
+    // fps 0: keep the original frame rate, no smoothing (an upscaled copy only).
+    val smooth = opts.fps > 0 || slow > 1
+    val fps = if (smooth) opts.fps.coerceIn(24, 240) else 0
+    val ai = opts.upscale.coerceIn(1, 4).let { if (it >= 3) 4 else it }
+    var outW = opts.width.coerceIn(160, 7680)
+    var outH = opts.height.coerceIn(120, 4320)
+    if (ai > 1) {
+      if (!NeuralPlan.canUpscale(opts.width, opts.height)) {
+        promise.reject(
+          "TOO_BIG",
+          "AI upscaling is for videos up to ${NeuralPlan.MAX_INPUT_LONG}×${NeuralPlan.MAX_INPUT_SHORT} (720p); this one is already ${opts.width}×${opts.height}.",
+          null,
+        )
+        return
+      }
+      val size = NeuralPlan.outputSize(opts.width, opts.height, ai)
+      if (size == null) {
+        promise.reject("TOO_BIG", "This video is already as big as a saved copy can be (4K).", null)
+        return
+      }
+      outW = size[0]
+      outH = size[1]
+    } else if (!smooth) {
+      promise.reject("NOTHING_TO_DO", "Choose smoothing, slow motion or upscaling.", null)
+      return
+    }
+    val effects = ArrayList<androidx.media3.common.Effect>()
+    // Upscale first (once per real frame), then make the in-between frames from the sharper picture.
+    aiOnGpu = null
+    if (ai > 1) effects += NeuralUpscaleEffect(ai) { gpu -> aiOnGpu = gpu }
+    if (smooth) {
+      val settings = MemcSettings().apply {
+        mode = MemcSettings.MODE_MEMC
+        targetFps = fps.toFloat()
+        speed = 1f
+        quality = Quality.from(opts.quality)
+        compare = false
+        showVectors = false
+        maxGapUs = 250_000L * slow
+      }
+      effects += MemcEffect(settings, null, isExport = true)
     }
     val item = EditedMediaItem.Builder(MediaItem.fromUri(Uri.parse(opts.uri)))
-      .setEffects(Effects(emptyList(), listOf(MemcEffect(settings, null, isExport = true))))
+      .setEffects(Effects(emptyList(), effects))
     if (slow > 1) item.setSpeed(ConstantSpeed(1f / slow))
     if (!opts.keepAudio) item.setRemoveAudio(true)
 
-    val suffix = if (slow > 1) "slowmo-${slow}x-${fps}fps" else "smooth-${fps}fps"
-    displayName = "${baseName(opts.title)}-$suffix.mp4"
+    val parts = ArrayList<String>()
+    if (ai > 1) parts += "ai${ai}x-${minOf(outW, outH)}p"
+    if (slow > 1) parts += "slowmo-${slow}x-${fps}fps" else if (smooth) parts += "smooth-${fps}fps"
+    displayName = "${baseName(opts.title)}-${parts.joinToString("-")}.mp4"
     dropCacheCopy = false
     val out = outputFile(displayName)
 
     // The default bitrate follows the source frame rate; a 4× faster copy needs about 4× the bits.
-    val pixels = opts.width.coerceIn(160, 7680).toLong() * opts.height.coerceIn(120, 4320)
-    val bitrate = (pixels * fps * 0.12).toLong().coerceIn(4_000_000L, 120_000_000L).toInt()
+    val pixels = outW.toLong() * outH
+    val rate = if (smooth) fps else ASSUMED_SOURCE_FPS
+    val bitrate = (pixels * rate * 0.12).toLong().coerceIn(4_000_000L, 120_000_000L).toInt()
     val encoders = DefaultEncoderFactory.Builder(context)
       .setRequestedVideoEncoderSettings(VideoEncoderSettings.Builder().setBitrate(bitrate).build())
       .build()
-    val t = Transformer.Builder(context)
+    val builder = Transformer.Builder(context)
       .setEncoderFactory(encoders)
       .setVideoMimeType(MimeTypes.VIDEO_H264)
       .addListener(listener)
-      .build()
+    // The network can take seconds per frame: don't let the muxer give up waiting for video.
+    if (ai > 1) builder.setMaxDelayBetweenMuxerSamplesMs(C.TIME_UNSET)
+    val t = builder.build()
     run(t, item.build(), out, promise)
   }
 
@@ -258,6 +304,7 @@ internal class SmoothExporter(private val context: Context, private val onProgre
             "name" to name,
             "notes" to (
               if (dropCache) listOf("The picture's format can't go into MP4 as it is, so it was converted. Only the main audio track was kept, and subtitles weren't copied.")
+              else if (aiOnGpu == false) listOf("This phone's GPU couldn't run the upscaling network, so it ran on the processor (slower).")
               else emptyList()
             ),
           )

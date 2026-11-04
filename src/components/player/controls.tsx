@@ -119,7 +119,7 @@ export function PlayerControls(p: ControlsProps) {
         </Pressable>
         <Btn icon={{ ios: 'rectangle.split.2x1', md: 'compare' }} label="Split compare" onPress={p.onToggleCompare} active={p.compare} />
         <Btn icon={{ ios: 'captions.bubble', md: 'subtitles' }} label="Audio and subtitles" onPress={p.onOpenTracks} />
-        <Btn icon={{ ios: 'slider.horizontal.3', md: 'tune' }} label="Smoothing settings" onPress={p.onOpenSmoothing} />
+        <Btn icon={{ ios: 'slider.horizontal.3', md: 'tune' }} label="Picture settings: smoothing and upscaling" onPress={p.onOpenSmoothing} />
       </View>
 
       <View style={styles.center} pointerEvents="box-none">

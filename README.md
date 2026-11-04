@@ -16,6 +16,15 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
 - **Split compare** (original on the left, smoothed on the right, draggable line) and a
   **motion-vector view** (colour = direction, strength = speed). Full-screen by default.
 - **Smooth slow motion:** at 0.25–0.75× speed the engine fills the missing frames.
+- **Live upscaling:** videos smaller than the screen (360p, 480p, pixelated clips) are resampled to
+  the size they're shown at with an edge-directed filter (the idea behind AMD FSR 1) and then
+  sharpened, on the GPU, for every frame, together with smoothing. Turn it on in the player's
+  *Picture* sheet or in Settings (*U* on the web); split compare shows original vs. upscaled.
+- **AI-upscaled copy:** *Save a copy → Sharper* runs every frame through a small super-resolution
+  network (Real-ESRGAN general x4v3, 2.5 MB, TensorFlow Lite on the GPU) and saves a 2× or 4× bigger
+  copy (up to 4K) to *Movies/Glide*. It rebuilds edges, text and texture and cleans up compression
+  blocks; it's slow (roughly 0.1 s per 168×168 tile on a recent phone GPU, about 10× that on the CPU),
+  so it's for videos up to 720p. It can be combined with a smooth or slow-motion copy.
 - **Save a smooth or slow-motion copy:** optical-flow retime to 30/60/120 fps, or 2×/4×/8× slower,
   with a slower, more detailed analysis than playback (half- and quarter-pixel). Saved to
   *Movies/Glide*; the original isn't changed.
@@ -51,9 +60,9 @@ The web player uses the same motion engine, ported to WebGL 2 with the same shad
 
 - Open a video file (button or drag and drop; the file stays on the device) or watch the built-in
   24 fps demo clip.
-- Off / Blend / MEMC, split compare, motion vectors, smooth slow motion, subtitle files
+- Off / Blend / MEMC, live upscaling, split compare, motion vectors, smooth slow motion, subtitle files
   (.srt, .vtt, .ass), speed, full screen, swipe gestures on phones.
-- Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare ·
+- Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · U upscaling · C split compare ·
   V motion vectors · F full screen · I frame rates · J/K audio delay −/+ 50 ms ·
   G/H subtitle delay −/+ 50 ms.
 - In the browser the sound can be moved at most 0.5 s earlier (the picture is held back to do it).
@@ -96,6 +105,8 @@ the real frame than plain frame repeat or blending; the export analysis adds abo
 | `src/components/` | UI pieces; `player/` has controls, gestures, seek bar, sheets |
 | `src/lib/` | Library access, thumbnails, resume positions, settings, frame-timing maths |
 | `modules/glide-engine/` | The engine: Android (Kotlin, `android/`), web (WebGL 2, `src/web/`), and the shared TypeScript API |
+| `modules/glide-engine/android/.../upscale/` | Live upscaling effect, and the AI upscaler for saved copies (model in `src/main/assets/`) |
+| `scripts/sr-model/` | How the AI upscaling model was converted to TensorFlow Lite (and a check against the original) |
 | `plugins/with-glide-activity.js` | Manifest flags for picture-in-picture |
 | `tests/app.test.js` | Logic tests (`npm test`) |
 
@@ -169,5 +180,6 @@ One-time setup:
 - [x] Web version (WebGL 2), deployable to Netlify
 - [ ] Per-pixel (dense) flow refinement for saved copies
 - [ ] Neural interpolation (RIFE-style, like DaVinci Resolve's Speed Warp) for saved copies
-- [ ] Super-resolution (sharper upscaling of low-resolution videos)
+- [x] Super-resolution: live edge-directed upscaling + sharpening, and AI (Real-ESRGAN) upscaled copies
+- [ ] AI upscaling during playback (needs a much smaller network, or an NPU path)
 - [ ] iOS engine (AVFoundation + Metal)
