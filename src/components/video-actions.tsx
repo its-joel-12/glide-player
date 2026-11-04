@@ -34,8 +34,21 @@ async function confirmAndDelete(video: VideoRef, onDeleted?: (v: VideoRef) => vo
   onDeleted?.(video);
 }
 
-/** Long-press (or ⋮) menu for a video. */
-export function VideoActions({ video, onClose, onDeleted }: { video: VideoRef | null; onClose: () => void; onDeleted?: (v: VideoRef) => void }) {
+/**
+ * Long-press (or ⋮) menu for a video. [inContinueWatching]: opened from the "Continue watching"
+ * row, which adds a plain "Remove from Continue watching".
+ */
+export function VideoActions({
+  video,
+  onClose,
+  onDeleted,
+  inContinueWatching,
+}: {
+  video: VideoRef | null;
+  onClose: () => void;
+  onDeleted?: (v: VideoRef) => void;
+  inContinueWatching?: boolean;
+}) {
   const resumeAt = video ? startPosition(getResume(video.id)) : 0;
   const watched = video ? isWatched(video.id) : false;
   const run = (fn: () => void) => () => {
@@ -51,12 +64,19 @@ export function VideoActions({ video, onClose, onDeleted }: { video: VideoRef | 
           {resumeAt > 0 ? <SheetOption label="Play from the start" onPress={run(() => openPlayer(video, { fromStart: true }))} /> : null}
           <SheetOption
             label={watched ? 'Mark as not watched' : 'Mark as watched'}
+            detail={!watched && resumeAt > 0 ? 'Ticks it and takes it out of Continue watching' : undefined}
             onPress={run(() => {
               setWatched(video.id, !watched);
               if (!watched) clearResume(video.id);
             })}
           />
-          {resumeAt > 0 && !watched ? <SheetOption label="Mark as not started" onPress={run(() => clearResume(video.id))} /> : null}
+          {resumeAt > 0 ? (
+            <SheetOption
+              label={inContinueWatching ? 'Remove from Continue watching' : 'Mark as not started'}
+              detail={inContinueWatching ? 'Forgets where you stopped; it starts from the beginning next time' : 'Removes it from Continue watching'}
+              onPress={run(() => clearResume(video.id))}
+            />
+          ) : null}
           <SheetOption
             label="Share"
             detail="Send it with another app"

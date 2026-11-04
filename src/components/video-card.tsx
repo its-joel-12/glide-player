@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { IconButton } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { fontFamily, Radius } from '@/constants/theme';
@@ -22,11 +23,13 @@ type Props = {
   watched?: boolean;
   onPress: () => void;
   onLongPress?: () => void;
+  /** Shows a ⋮ button on the thumbnail that opens the video's menu. */
+  onMore?: () => void;
   /** Wide cards for the "Continue watching" row. */
   compact?: boolean;
 };
 
-export function VideoCard({ id, uri, title, durationMs, width, height, modifiedAt, progress = 0, watched, onPress, onLongPress, compact }: Props) {
+export function VideoCard({ id, uri, title, durationMs, width, height, modifiedAt, progress = 0, watched, onPress, onLongPress, onMore, compact }: Props) {
   const theme = useTheme();
   const thumb = useThumbnail(id, uri, durationMs);
   const res = formatResolution(width, height);
@@ -34,7 +37,7 @@ export function VideoCard({ id, uri, title, durationMs, width, height, modifiedA
   return (
     <Pressable
       onPress={onPress}
-      onLongPress={onLongPress}
+      onLongPress={onLongPress ?? onMore}
       delayLongPress={350}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${formatTime(durationMs)}${watched ? ', watched' : ''}`}
@@ -50,6 +53,11 @@ export function VideoCard({ id, uri, title, durationMs, width, height, modifiedA
           </View>
         ) : null}
         {watched ? <WatchedTick /> : null}
+        {onMore ? (
+          <View style={styles.more}>
+            <IconButton icon={{ ios: 'ellipsis', md: 'more_vert' }} label={`More options for ${title}`} onPress={onMore} size={18} color="#FFFFFF" />
+          </View>
+        ) : null}
         {progress > 0 ? (
           <View style={styles.progressTrack}>
             <View style={[styles.progressFill, { width: `${Math.round(progress * 100)}%`, backgroundColor: theme.accent }]} />
@@ -85,6 +93,7 @@ const styles = StyleSheet.create({
   thumb: { width: '100%', aspectRatio: 16 / 9, borderRadius: Radius.thumb, overflow: 'hidden', marginBottom: 6 },
   badge: { position: 'absolute', right: 6, bottom: 6, backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 4, paddingHorizontal: 5, paddingVertical: 1 },
   badgeText: { fontSize: 11.5, lineHeight: 16, fontFamily: fontFamily(500, 'mono') },
+  more: { position: 'absolute', right: 4, top: 4, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.55)' },
   progressTrack: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 3, backgroundColor: 'rgba(255,255,255,0.3)' },
   progressFill: { height: 3 },
   title: { lineHeight: 19 },

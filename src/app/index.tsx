@@ -7,13 +7,14 @@ import { Button, IconButton } from '@/components/button';
 import { FolderRow } from '@/components/folder-row';
 import { Segmented } from '@/components/segmented';
 import { ThemedText } from '@/components/themed-text';
+import { VideoActions } from '@/components/video-actions';
 import { VideoCard } from '@/components/video-card';
 import { VideoGrid } from '@/components/video-grid';
 import { Wordmark } from '@/components/wordmark';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { checkAccess, chooseMoreVideos, fetchFolders, requestAccess, type Access, type Folder } from '@/lib/library';
-import { openPlayer, pickVideoFile } from '@/lib/navigation';
+import { openPlayer, pickVideoFile, type VideoRef } from '@/lib/navigation';
 import { continueWatching, progressFraction, useResumeEntries } from '@/lib/resume';
 
 type Tab = 'videos' | 'folders';
@@ -75,7 +76,8 @@ export default function LibraryScreen() {
 function ContinueWatching() {
   const entries = useResumeEntries();
   const list = continueWatching(entries);
-  if (!list.length) return null;
+  const [actionsFor, setActionsFor] = useState<VideoRef | null>(null);
+  if (!list.length) return actionsFor ? <VideoActions video={actionsFor} onClose={() => setActionsFor(null)} inContinueWatching /> : null;
   return (
     <View style={{ gap: Spacing.two, marginBottom: Spacing.four }}>
       <ThemedText type="label" themeColor="textSecondary" style={styles.sectionLabel}>
@@ -92,9 +94,11 @@ function ContinueWatching() {
             progress={progressFraction(e)}
             compact
             onPress={() => openPlayer({ id: e.id, uri: e.uri, title: e.title, width: e.width, height: e.height })}
+            onMore={() => setActionsFor({ id: e.id, uri: e.uri, title: e.title, width: e.width, height: e.height, durationMs: e.durationMs })}
           />
         ))}
       </ScrollView>
+      <VideoActions video={actionsFor} onClose={() => setActionsFor(null)} inContinueWatching />
     </View>
   );
 }

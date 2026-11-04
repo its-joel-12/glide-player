@@ -35,7 +35,7 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
   WebVTT) are saved alongside and load automatically when the copy plays in Glide.
 - **Library:** all videos as big thumbnails or a compact list, sorted by date, name or length;
   folders, thumbnails, durations, a tick on videos you've watched to the end, *Continue watching* with
-  resume positions; share or delete a video from its menu (long-press or ⋮); open any other file from
+  resume positions (⋮ or long-press a card to remove it, or mark it as watched); share or delete a video from its menu (long-press or ⋮); open any other file from
   the folder button.
 - **Player essentials:** swipe sideways to seek, up/down on the left for brightness and on the right
   for volume, double-tap to skip, pinch to fill the screen; subtitles (built-in tracks or .srt/.vtt/.ass
