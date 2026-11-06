@@ -68,6 +68,23 @@ class GlideEngineModule : Module() {
       activity.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
     }.runOnQueue(Queues.MAIN)
 
+    // Several gallery videos in one share sheet (ACTION_SEND_MULTIPLE).
+    AsyncFunction("shareVideos") { uris: List<String>, title: String ->
+      val activity = appContext.currentActivity ?: throw Exceptions.MissingActivity()
+      val targets = uris.map(Uri::parse)
+      require(targets.isNotEmpty()) { "No videos to share" }
+      val types = targets.map { context.contentResolver.getType(it) ?: "video/*" }.distinct()
+      val clip = ClipData.newRawUri(title, targets[0])
+      targets.drop(1).forEach { clip.addItem(ClipData.Item(it)) }
+      val send = Intent(Intent.ACTION_SEND_MULTIPLE).apply {
+        type = types.singleOrNull() ?: "video/*"
+        putParcelableArrayListExtra(Intent.EXTRA_STREAM, ArrayList(targets))
+        clipData = clip
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      }
+      activity.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+    }.runOnQueue(Queues.MAIN)
+
     AsyncFunction("cancelExport") {
       exporter?.cancel()
     }.runOnQueue(Queues.MAIN)

@@ -37,6 +37,21 @@ export function setWatched(id: string, value: boolean) {
   }
 }
 
+/** Same as setWatched for many videos, saved once. */
+export function setWatchedMany(ids: string[], value: boolean) {
+  const next = { ...watched };
+  const now = Date.now();
+  let changed = false;
+  for (const id of ids) {
+    const key = mediaKey(id);
+    if (value === key in next) continue;
+    changed = true;
+    if (value) next[key] = now;
+    else delete next[key];
+  }
+  if (changed) emit(next);
+}
+
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => listeners.delete(l);

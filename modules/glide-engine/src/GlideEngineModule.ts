@@ -11,6 +11,8 @@ declare class GlideEngineNative extends NativeModule<Events> {
   exportSmooth(options: ExportOptions): Promise<ExportResult>;
   cancelExport(): Promise<void>;
   shareVideo(uri: string, title: string): Promise<void>;
+  /** Missing in development builds made before multi-select. */
+  shareVideos?(uris: string[], title: string): Promise<void>;
 }
 
 /** null on platforms without the native engine yet (iOS, web). */
@@ -41,6 +43,14 @@ export function exportSmooth(options: ExportOptions): Promise<ExportResult> {
 export function shareVideo(uri: string, title: string): Promise<void> {
   if (!native) return Promise.reject(new Error('Sharing needs the Android app.'));
   return native.shareVideo(uri, title);
+}
+
+/** One Android share sheet for several gallery videos. */
+export function shareVideos(uris: string[], title: string): Promise<void> {
+  if (!native) return Promise.reject(new Error('Sharing needs the Android app.'));
+  if (uris.length === 1) return native.shareVideo(uris[0], title);
+  if (!native.shareVideos) return Promise.reject(new Error('Sharing several videos at once needs the latest build of the app.'));
+  return native.shareVideos(uris, title);
 }
 
 export function cancelExport(): Promise<void> {

@@ -34,7 +34,7 @@ export async function fetchAllVideos(_album?: unknown): Promise<VideoItem[]> {
   return [];
 }
 
-export async function deleteVideo(_item: { id: string }): Promise<void> {
+export async function deleteVideos(_items: { id: string }[]): Promise<void> {
   throw new Error('Deleting needs the Android app.');
 }
 

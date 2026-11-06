@@ -1,11 +1,13 @@
+import { shareVideos } from 'glide-engine';
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { Sheet, SheetOption } from '@/components/sheet';
 import { ThemedText } from '@/components/themed-text';
-import { VideoActions } from '@/components/video-actions';
+import { confirmAndDelete, VideoActions } from '@/components/video-actions';
 import { VideoCard } from '@/components/video-card';
 import { VideoRow } from '@/components/video-row';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
@@ -15,8 +17,9 @@ import { albumById, fetchAllVideos, type VideoItem } from '@/lib/library';
 import { LIBRARY_SORTS, sortVideos } from '@/lib/library-sort';
 import { openPlayer } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
-import { progressFraction, useResumeEntries } from '@/lib/resume';
-import { useWatched, watchedIn } from '@/lib/watched';
+import { clearResumeMany, progressFraction, useResumeEntries } from '@/lib/resume';
+import { pruneSelection, selectAllToggle, toggleSelected, type Selection } from '@/lib/selection';
+import { setWatchedMany, useWatched, watchedIn } from '@/lib/watched';
 
 type Props = {
   /** Only videos in this folder. */
@@ -32,6 +35,9 @@ type Props = {
  * The videos as a grid of big thumbnails or a list with small ones, sorted as chosen
  * (newest, oldest, name, length). Grid rows are built here instead of with FlatList's
  * numColumns, so rotating the phone just regroups them and keys stay unique.
+ *
+ * Long-press a video (or the select button) to pick several; a bar at the bottom then shares,
+ * deletes or marks them watched. Back or ✕ stops picking. The ⋮ menu is for one video.
  */
 export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const theme = useTheme();
@@ -45,6 +51,8 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [actionsFor, setActionsFor] = useState<VideoItem | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
+  const [selection, setSelection] = useState<Selection>(null);
+  const insets = useSafeAreaInsets();
   /** Bumped on every load; answers to older requests are ignored. */
   const generation = useRef(0);
 
@@ -54,11 +62,53 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const rows = toRows(sorted, columns);
   const sortLabel = LIBRARY_SORTS.find((s) => s.value === prefs.librarySort)?.label ?? '';
 
+  const selecting = selection !== null;
+  /** Picked videos, in the order shown. */
+  const picked = selection ? sorted.filter((v) => selection.has(v.id)) : [];
+  const allPicked = picked.length > 0 && picked.length === sorted.length;
+  const allWatched = picked.length > 0 && picked.every((v) => watchedIn(watched, v.id));
+  const tap = (v: VideoItem) => (selecting ? setSelection((s) => toggleSelected(s, v.id)) : openPlayer(v));
+  const longPress = (v: VideoItem) => setSelection((s) => toggleSelected(s, v.id));
+
+  // Android back stops picking instead of leaving the screen.
+  useEffect(() => {
+    if (!selecting) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setSelection(null);
+      return true;
+    });
+    return () => sub.remove();
+  }, [selecting]);
+
+  const sharePicked = () => {
+    if (!picked.length) return;
+    const one = picked.length === 1;
+    shareVideos(
+      picked.map((v) => v.uri),
+      one ? picked[0].title : `${picked.length} videos`,
+    )
+      .then(() => setSelection(null))
+      .catch((e: unknown) => Alert.alert(one ? 'Couldn’t share the video' : 'Couldn’t share the videos', e instanceof Error ? e.message : String(e)));
+  };
+  const deletePicked = () =>
+    void confirmAndDelete(picked, (gone) => {
+      const ids = new Set(gone.map((v) => v.id));
+      setItems((all) => all.filter((x) => !ids.has(x.id)));
+      setSelection(null);
+    });
+  const markPicked = () => {
+    const ids = picked.map((v) => v.id);
+    setWatchedMany(ids, !allWatched);
+    if (!allWatched) clearResumeMany(ids);
+    setSelection(null);
+  };
+
   const load = (gen: number) =>
     fetchAllVideos(albumId ? albumById(albumId) : undefined)
       .then((all) => {
         if (gen !== generation.current) return;
         setItems(mergeUnique([], all));
+        setSelection((s) => pruneSelection(s, all.map((v) => v.id)));
         setError(null);
       })
       .catch((e: unknown) => {
@@ -90,6 +140,13 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
         </ThemedText>
       </Pressable>
       <IconButton
+        icon={{ ios: 'checkmark.circle', md: 'checklist' }}
+        label="Select videos"
+        onPress={() => setSelection((s) => s ?? new Set())}
+        active={selecting}
+        size={20}
+      />
+      <IconButton
         icon={list ? { ios: 'square.grid.2x2', md: 'grid_view' } : { ios: 'list.bullet', md: 'view_list' }}
         label={list ? 'Show as grid' : 'Show as list'}
         onPress={() => setPreference('libraryView', list ? 'grid' : 'list')}
@@ -99,9 +156,10 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   );
 
   return (
-    <>
+    <View style={styles.root}>
       <FlatList
         data={rows}
+        extraData={selection}
         key={list ? 'list' : 'grid'}
         keyExtractor={(row) => row[0].id}
         ListHeaderComponent={
@@ -128,8 +186,11 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
               {...row[0]}
               progress={progressFraction(resume[row[0].id])}
               watched={watchedIn(watched, row[0].id)}
-              onPress={() => openPlayer(row[0])}
+              onPress={() => tap(row[0])}
+              onLongPress={() => longPress(row[0])}
               onMore={() => setActionsFor(row[0])}
+              selected={!!selection?.has(row[0].id)}
+              selecting={selecting}
             />
           ) : (
             <View style={styles.row}>
@@ -139,8 +200,11 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
                   {...item}
                   progress={progressFraction(resume[item.id])}
                   watched={watchedIn(watched, item.id)}
-                  onPress={() => openPlayer(item)}
-                  onLongPress={() => setActionsFor(item)}
+                  onPress={() => tap(item)}
+                  onLongPress={() => longPress(item)}
+                  onMore={() => setActionsFor(item)}
+                  selected={!!selection?.has(item.id)}
+                  selecting={selecting}
                 />
               ))}
               {/* keep the last row's cards the same width as the others */}
@@ -161,10 +225,35 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
             </View>
           )
         }
-        ListFooterComponent={<View style={{ height: Spacing.five }} />}
+        ListFooterComponent={<View style={{ height: selecting ? 96 + insets.bottom : Spacing.five }} />}
         initialNumToRender={list ? 14 : 8}
         windowSize={9}
       />
+      {selecting ? (
+        <View style={[styles.barWrap, { bottom: insets.bottom + Spacing.three }]}>
+          <View style={[styles.bar, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+            <IconButton icon={{ ios: 'xmark', md: 'close' }} label="Stop selecting" onPress={() => setSelection(null)} size={20} />
+            <ThemedText type="label" numberOfLines={1} style={{ flex: 1 }} accessibilityLiveRegion="polite">
+              {picked.length ? `${picked.length} selected` : 'Select videos'}
+            </ThemedText>
+            <IconButton
+              icon={allPicked ? { ios: 'circle', md: 'deselect' } : { ios: 'checklist', md: 'select_all' }}
+              label={allPicked ? 'Unselect all' : 'Select all'}
+              onPress={() => setSelection((s) => selectAllToggle(s, sorted.map((v) => v.id)))}
+              size={20}
+            />
+            <IconButton
+              icon={allWatched ? { ios: 'xmark.circle', md: 'remove_done' } : { ios: 'checkmark.circle', md: 'done_all' }}
+              label={allWatched ? 'Mark as not watched' : 'Mark as watched'}
+              onPress={markPicked}
+              disabled={!picked.length}
+              size={20}
+            />
+            <IconButton icon={{ ios: 'square.and.arrow.up', md: 'share' }} label="Share" onPress={sharePicked} disabled={!picked.length} size={20} />
+            <IconButton icon={{ ios: 'trash', md: 'delete' }} label="Delete from phone" onPress={deletePicked} disabled={!picked.length} color={theme.danger} size={20} />
+          </View>
+        </View>
+      ) : null}
       <VideoActions video={actionsFor} onClose={() => setActionsFor(null)} onDeleted={(v) => setItems((all) => all.filter((x) => x.id !== v.id))} />
       <Sheet visible={sortOpen} title="Sort videos" onClose={() => setSortOpen(false)}>
         {LIBRARY_SORTS.map((s) => (
@@ -179,11 +268,29 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
           />
         ))}
       </Sheet>
-    </>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  root: { flex: 1 },
+  barWrap: { position: 'absolute', left: 0, right: 0, alignItems: 'center', paddingHorizontal: Spacing.three },
+  bar: {
+    width: '100%',
+    maxWidth: 560,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    borderWidth: 1,
+    borderRadius: 28,
+    paddingHorizontal: Spacing.one,
+    paddingVertical: Spacing.one,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
   content: { paddingHorizontal: Spacing.three, gap: Spacing.three, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.one },
   sort: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5, maxWidth: 180 },

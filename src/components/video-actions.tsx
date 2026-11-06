@@ -3,18 +3,21 @@ import { Alert, Platform } from 'react-native';
 
 import { Sheet, SheetOption } from '@/components/sheet';
 import { formatResolution, formatTime } from '@/lib/format';
-import { deleteVideo } from '@/lib/library';
+import { deleteVideos } from '@/lib/library';
 import { openExport, openPlayer, type VideoRef } from '@/lib/navigation';
-import { clearResume, getResume, startPosition } from '@/lib/resume';
-import { isWatched, setWatched } from '@/lib/watched';
+import { clearResume, clearResumeMany, getResume, startPosition } from '@/lib/resume';
+import { isWatched, setWatched, setWatchedMany } from '@/lib/watched';
 
 /** Android 11+ shows its own "Allow Glide to delete this video?" dialog; older versions don't. */
 const systemConfirmsDelete = Platform.OS === 'android' && Number(Platform.Version) >= 30;
 
-async function confirmAndDelete(video: VideoRef, onDeleted?: (v: VideoRef) => void) {
+/** Deletes videos from the phone after one confirmation (the system's on Android 11+, ours before). */
+export async function confirmAndDelete(videos: VideoRef[], onDeleted?: (gone: VideoRef[]) => void) {
+  if (!videos.length) return;
+  const one = videos.length === 1;
   if (!systemConfirmsDelete) {
     const ok = await new Promise<boolean>((resolve) =>
-      Alert.alert('Delete this video?', `“${video.title}” will be removed from your phone.`, [
+      Alert.alert(one ? 'Delete this video?' : `Delete ${videos.length} videos?`, one ? `“${videos[0].title}” will be removed from your phone.` : 'They will be removed from your phone.', [
         { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
         { text: 'Delete', style: 'destructive', onPress: () => resolve(true) },
       ]),
@@ -22,16 +25,17 @@ async function confirmAndDelete(video: VideoRef, onDeleted?: (v: VideoRef) => vo
     if (!ok) return;
   }
   try {
-    await deleteVideo(video);
+    await deleteVideos(videos);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     // Saying no in the system dialog lands here too: that isn't an error.
-    if (!/cancel|denied|declin|not granted/i.test(message)) Alert.alert('Couldn’t delete the video', message);
+    if (!/cancel|denied|declin|not granted/i.test(message)) Alert.alert(one ? 'Couldn’t delete the video' : 'Couldn’t delete the videos', message);
     return;
   }
-  clearResume(video.id);
-  setWatched(video.id, false);
-  onDeleted?.(video);
+  const ids = videos.map((v) => v.id);
+  clearResumeMany(ids);
+  setWatchedMany(ids, false);
+  onDeleted?.(videos);
 }
 
 /**
@@ -87,7 +91,7 @@ export function VideoActions({
             detail="Optical-flow retime (60/120 fps, 2–8× slow motion) or AI upscaling (2×/4×)"
             onPress={run(() => openExport(video))}
           />
-          <SheetOption label="Delete from phone" detail="Removes the file itself" onPress={run(() => void confirmAndDelete(video, onDeleted))} />
+          <SheetOption label="Delete from phone" detail="Removes the file itself" onPress={run(() => void confirmAndDelete([video], (gone) => onDeleted?.(gone[0])))} />
         </>
       ) : null}
     </Sheet>

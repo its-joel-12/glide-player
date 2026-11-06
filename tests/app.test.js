@@ -238,5 +238,18 @@ eq(
 );
 eq(fs.existsSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/assets/glide-sr-x4.tflite')), true, 'upscaling model is bundled');
 
+// selection (multi-select in the library)
+const sel = require('../src/lib/selection.ts');
+const picks = (s) => (s ? [...s].sort() : s);
+eq(picks(sel.toggleSelected(null, 'a')), ['a'], 'long-press starts selecting with that video');
+eq(picks(sel.toggleSelected(new Set(['a']), 'b')), ['a', 'b'], 'tap adds');
+eq(sel.toggleSelected(new Set(['a']), 'a'), null, 'unpicking the last one ends selecting');
+eq(picks(sel.selectAllToggle(new Set(['a']), ['a', 'b', 'c'])), ['a', 'b', 'c'], 'select all');
+eq(picks(sel.selectAllToggle(new Set(['a', 'b']), ['a', 'b'])), [], 'select all again unpicks, still selecting');
+eq(picks(sel.pruneSelection(new Set(['a', 'gone']), ['a', 'b'])), ['a'], 'refresh drops missing videos');
+const same = new Set(['a']);
+eq(sel.pruneSelection(same, ['a']) === same, true, 'prune keeps the same object when nothing changed');
+eq(sel.pruneSelection(null, ['a']), null, 'prune while not selecting');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

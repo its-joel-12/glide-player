@@ -46,6 +46,7 @@ export function IconButton({
   size = 22,
   style,
   active,
+  disabled,
 }: {
   icon: { ios: SFSymbol; md: AndroidSymbol };
   onPress: () => void;
@@ -54,6 +55,7 @@ export function IconButton({
   size?: number;
   style?: StyleProp<ViewStyle>;
   active?: boolean;
+  disabled?: boolean;
 }) {
   const theme = useTheme();
   return (
@@ -61,8 +63,10 @@ export function IconButton({
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={disabled ? { disabled } : undefined}
+      disabled={disabled}
       hitSlop={6}
-      style={({ pressed }) => [styles.icon, active && { backgroundColor: theme.accentSoft }, pressed && { opacity: 0.6 }, style]}>
+      style={({ pressed }) => [styles.icon, active && { backgroundColor: theme.accentSoft }, pressed && { opacity: 0.6 }, disabled && { opacity: 0.35 }, style]}>
       <Icon ios={icon.ios} md={icon.md} size={size} color={color ?? theme.text} />
     </Pressable>
   );

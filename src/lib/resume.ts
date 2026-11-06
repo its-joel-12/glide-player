@@ -44,6 +44,15 @@ export function clearResume(id: string) {
   emit(rest);
 }
 
+/** Same as clearResume for many videos, saved once. */
+export function clearResumeMany(ids: string[]) {
+  const gone = ids.filter((id) => entries[id]);
+  if (!gone.length) return;
+  const rest = { ...entries };
+  for (const id of gone) delete rest[id];
+  emit(rest);
+}
+
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => {

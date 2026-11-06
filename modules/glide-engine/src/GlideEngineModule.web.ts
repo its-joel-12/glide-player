@@ -55,6 +55,10 @@ export function shareVideo(_uri: string, _title: string): Promise<void> {
   return Promise.reject(new Error('Sharing needs the Android app.'));
 }
 
+export function shareVideos(_uris: string[], _title: string): Promise<void> {
+  return Promise.reject(new Error('Sharing needs the Android app.'));
+}
+
 export function cancelExport(): Promise<void> {
   return Promise.resolve();
 }

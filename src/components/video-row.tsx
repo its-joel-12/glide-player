@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { IconButton } from '@/components/button';
 import { ThemedText } from '@/components/themed-text';
-import { WatchedTick } from '@/components/video-card';
+import { SelectCircle, selectHint, WatchedTick } from '@/components/video-card';
 import { fontFamily, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDay, formatResolution, formatTime } from '@/lib/format';
@@ -21,22 +21,28 @@ type Props = {
   watched?: boolean;
   onPress: () => void;
   onMore: () => void;
+  /** Defaults to onMore. */
+  onLongPress?: () => void;
+  /** See VideoCard. */
+  selected?: boolean;
+  selecting?: boolean;
 };
 
 /** One line of the list view: small thumbnail, name, details, and a "more" button. */
-export function VideoRow({ id, uri, title, durationMs, width, height, modifiedAt, progress = 0, watched, onPress, onMore }: Props) {
+export function VideoRow({ id, uri, title, durationMs, width, height, modifiedAt, progress = 0, watched, onPress, onMore, onLongPress, selected, selecting }: Props) {
   const theme = useTheme();
   const thumb = useThumbnail(id, uri, durationMs);
   const meta = [formatResolution(width, height), formatDay(modifiedAt)].filter(Boolean).join(' · ');
   return (
     <Pressable
       onPress={onPress}
-      onLongPress={onMore}
+      onLongPress={onLongPress ?? onMore}
       delayLongPress={350}
       accessibilityRole="button"
       accessibilityLabel={`${title}, ${formatTime(durationMs)}${watched ? ', watched' : ''}`}
-      accessibilityHint="Plays the video. Long-press for more options."
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: theme.backgroundElement }]}>
+      accessibilityState={selected !== undefined ? { selected } : undefined}
+      accessibilityHint={selectHint(selected, selecting)}
+      style={({ pressed }) => [styles.row, selected && { backgroundColor: theme.backgroundSelected }, pressed && { backgroundColor: theme.backgroundElement }]}>
       <View style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
         {thumb ? <Image source={{ uri: thumb }} style={StyleSheet.absoluteFill} contentFit="cover" transition={150} /> : null}
         {durationMs > 0 ? (
@@ -63,7 +69,13 @@ export function VideoRow({ id, uri, title, durationMs, width, height, modifiedAt
           </ThemedText>
         ) : null}
       </View>
-      <IconButton icon={{ ios: 'ellipsis', md: 'more_vert' }} label={`More options for ${title}`} onPress={onMore} size={20} />
+      {selecting ? (
+        <View style={styles.check}>
+          <SelectCircle selected={!!selected} plain />
+        </View>
+      ) : (
+        <IconButton icon={{ ios: 'ellipsis', md: 'more_vert' }} label={`More options for ${title}`} onPress={onMore} size={20} />
+      )}
     </Pressable>
   );
 }
@@ -71,6 +83,7 @@ export function VideoRow({ id, uri, title, durationMs, width, height, modifiedAt
 const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.one, borderRadius: Radius.thumb },
   thumb: { width: 128, aspectRatio: 16 / 9, borderRadius: Radius.thumb, overflow: 'hidden' },
+  check: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
   text: { flex: 1, minWidth: 0, gap: 2 },
   badge: { position: 'absolute', right: 4, bottom: 4, backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 3, paddingHorizontal: 4 },
   badgeText: { fontSize: 10.5, lineHeight: 15, fontFamily: fontFamily(500, 'mono') },

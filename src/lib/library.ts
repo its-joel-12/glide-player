@@ -83,9 +83,10 @@ export async function fetchAllVideos(album?: Album): Promise<VideoItem[]> {
   return rows.map(toItem);
 }
 
-/** Deletes a video from the phone. Android 11+ asks the user to confirm; rejects if they say no. */
-export async function deleteVideo(item: Pick<VideoItem, 'id'>): Promise<void> {
-  await Asset.delete([new Asset(item.id)]);
+/** Deletes videos from the phone. Android 11+ asks the user once for all of them; rejects if they say no. */
+export async function deleteVideos(items: Pick<VideoItem, 'id'>[]): Promise<void> {
+  if (!items.length) return;
+  await Asset.delete(items.map((i) => new Asset(i.id)));
 }
 
 /** One page of videos, newest first. */
