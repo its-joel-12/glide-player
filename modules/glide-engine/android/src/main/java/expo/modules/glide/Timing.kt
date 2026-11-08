@@ -43,6 +43,9 @@ internal class ShiftedRenderer(renderer: Renderer, private val shiftUs: () -> Lo
 internal class GlideRenderersFactory(context: Context, private val timing: PlaybackTiming) : DefaultRenderersFactory(context) {
   init {
     setEnableDecoderFallback(true)
+    // Adds Media3's FFmpeg audio renderer after the phone's own decoders, so audio the phone can't
+    // decode (Dolby Digital AC-3 on most phones, DTS, TrueHD) is decoded in software, like VLC does.
+    setExtensionRendererMode(EXTENSION_RENDERER_MODE_ON)
   }
 
   override fun buildVideoRenderers(

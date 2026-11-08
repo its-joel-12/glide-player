@@ -53,3 +53,5 @@ credentials/
 # native module build output
 modules/*/android/build/
 modules/*/android/.gradle/
+# FFmpeg source and the libraries scripts/ffmpeg/build.sh builds from it
+modules/glide-engine/android/src/main/jni/ffmpeg/

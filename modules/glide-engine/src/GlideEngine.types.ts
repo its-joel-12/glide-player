@@ -84,7 +84,14 @@ export type StatsEvent = {
   upscaleToHeight?: number;
 };
 export type PlaybackStateEvent = { isPlaying: boolean; playWhenReady: boolean; buffering: boolean; ended: boolean };
-export type Track = { id: string; label: string; language: string; selected: boolean };
+export type Track = {
+  id: string;
+  label: string;
+  language: string;
+  selected: boolean;
+  /** Set when the phone can't play this track (audio only), e.g. "DTS can't be played on this phone". */
+  unsupported?: string;
+};
 export type TracksEvent = { audio: Track[]; text: Track[] };
 export type PlayerErrorEvent = { message: string; code: string; fatal: boolean };
 

@@ -194,15 +194,19 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
     tracks.groups.forEachIndexed { gi, group ->
       if (group.type != C.TRACK_TYPE_AUDIO && group.type != C.TRACK_TYPE_TEXT) return@forEachIndexed
       for (ti in 0 until group.length) {
-        if (!group.isTrackSupported(ti)) continue
+        val supported = group.isTrackSupported(ti)
+        // Unplayable subtitles are just left out; unplayable sound is listed, so a silent video says why.
+        if (!supported && group.type != C.TRACK_TYPE_AUDIO) continue
         val f = group.getTrackFormat(ti)
         val list = if (group.type == C.TRACK_TYPE_AUDIO) audio else text
-        list += mapOf(
+        val track = mutableMapOf<String, Any>(
           "id" to "$gi:$ti",
           "label" to trackLabel(f, list.size + 1, group.type),
           "language" to (f.language ?: ""),
           "selected" to group.isTrackSelected(ti),
         )
+        if (!supported) track["unsupported"] = "${codecName(f.sampleMimeType)} can't be played on this phone"
+        list += track
       }
     }
     onTracks(mapOf("audio" to audio, "text" to text))

@@ -238,6 +238,16 @@ eq(
 );
 eq(fs.existsSync(require('path').join(__dirname, '../modules/glide-engine/android/src/main/assets/glide-sr-x4.tflite')), true, 'upscaling model is bundled');
 
+// FFmpeg audio decoder: the copied Media3 sources match the Media3 version the app uses
+{
+  const path = require('path');
+  const gradle = fs.readFileSync(path.join(__dirname, '../modules/glide-engine/android/build.gradle'), 'utf8');
+  const lib = fs.readFileSync(path.join(__dirname, '../modules/glide-engine/android/src/main/java/androidx/media3/decoder/ffmpeg/FfmpegLibrary.java'), 'utf8');
+  eq((lib.match(/vendored from androidx\/media ([\d.]+)/) || [])[1], (gradle.match(/media3Version = "([\d.]+)"/) || [])[1], 'FFmpeg decoder copied from the same Media3 version');
+  const decoders = fs.readFileSync(path.join(__dirname, '../scripts/ffmpeg/build.sh'), 'utf8').match(/DECODERS=\(([^)]*)\)/)[1].split(/\s+/);
+  eq(['ac3', 'eac3', 'truehd', 'dca'].every((d) => decoders.includes(d)), true, 'FFmpeg build has the Dolby/DTS decoders');
+}
+
 // selection (multi-select in the library)
 const sel = require('../src/lib/selection.ts');
 const picks = (s) => (s ? [...s].sort() : s);

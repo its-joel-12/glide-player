@@ -439,17 +439,6 @@ internal class Remuxer(
     return listOfNotNull(f.label, lang).firstOrNull()?.let { "the $it $kind track" } ?: "a $kind track"
   }
 
-  private fun codecName(mime: String?): String = when (mime) {
-    MimeTypes.AUDIO_AC3 -> "Dolby Digital (AC-3)"
-    MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Digital Plus"
-    MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
-    MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_EXPRESS, MimeTypes.AUDIO_DTS_UHD_P2 -> "DTS"
-    MimeTypes.APPLICATION_PGS -> "PGS"
-    MimeTypes.APPLICATION_VOBSUB -> "VobSub"
-    MimeTypes.APPLICATION_DVBSUBS -> "DVB"
-    else -> mime ?: "this format"
-  }
-
   private fun srtTime(us: Long): String {
     val ms = us / 1000
     return String.format(Locale.US, "%02d:%02d:%02d,%03d", ms / 3_600_000, ms / 60_000 % 60, ms / 1000 % 60, ms % 1000)
@@ -718,4 +707,16 @@ internal class AacTranscoder(input: Format, private val addTrack: (Format) -> In
       }
     }
   }
+}
+
+/** A readable name for audio and subtitle formats people meet in films (used in notes and the track list). */
+internal fun codecName(mime: String?): String = when (mime) {
+  MimeTypes.AUDIO_AC3 -> "Dolby Digital (AC-3)"
+  MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Digital Plus"
+  MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
+  MimeTypes.AUDIO_DTS, MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_DTS_EXPRESS, MimeTypes.AUDIO_DTS_UHD_P2 -> "DTS"
+  MimeTypes.APPLICATION_PGS -> "PGS"
+  MimeTypes.APPLICATION_VOBSUB -> "VobSub"
+  MimeTypes.APPLICATION_DVBSUBS -> "DVB"
+  else -> mime ?: "this format"
 }

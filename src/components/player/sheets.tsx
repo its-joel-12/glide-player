@@ -151,7 +151,7 @@ export function TracksSheet(p: {
         Audio
       </ThemedText>
       {p.tracks.audio.length ? (
-        p.tracks.audio.map((t) => <SheetOption key={t.id} label={t.label} selected={t.selected} onPress={() => p.onAudio(t)} />)
+        p.tracks.audio.map((t) => <SheetOption key={t.id} label={t.label} detail={t.unsupported} selected={t.selected} onPress={() => !t.unsupported && p.onAudio(t)} />)
       ) : (
         <ThemedText themeColor="textSecondary">No audio tracks.</ThemedText>
       )}

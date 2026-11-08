@@ -11,11 +11,23 @@ android {
   defaultConfig {
     versionCode 1
     versionName "0.1.0"
+    // Keeps the names the FFmpeg decoder's native code looks up.
+    consumerProguardFiles "src/main/proguard-ffmpeg.pro"
   }
   lint {
     abortOnError false
     checkReleaseBuilds false
   }
+}
+
+// FFmpeg audio decoders (AC-3, E-AC-3, TrueHD, DTS, MP3, ALAC) for sound the phone can't decode itself.
+// The Java side (src/main/java/androidx/media3/decoder/ffmpeg) is Media3's decoder_ffmpeg, copied in;
+// its native half (src/main/jni) is only built once FFmpeg has been built with scripts/ffmpeg/build.sh
+// (GitHub Actions does that). Without it the app still builds; those tracks are then listed as unsupported.
+if (file("src/main/jni/ffmpeg/android-libs").exists()) {
+  android.externalNativeBuild.cmake.path = file("src/main/jni/CMakeLists.txt")
+  // The same NDK as React Native's own native code (FFmpeg is built with it too).
+  if (rootProject.ext.has("ndkVersion")) android.ndkVersion = rootProject.ext.ndkVersion
 }
 
 // Media3 1.11 needs compileSdk 36 (React Native 0.86 already uses 36).
@@ -25,6 +37,7 @@ def tfliteVersion = "2.17.0"
 dependencies {
   implementation "androidx.media3:media3-common:$media3Version"
   implementation "androidx.media3:media3-exoplayer:$media3Version"
+  implementation "androidx.media3:media3-decoder:$media3Version" // for the FFmpeg audio decoder (src/main/java/androidx/media3/decoder/ffmpeg)
   implementation "androidx.media3:media3-effect:$media3Version"
   implementation "androidx.media3:media3-transformer:$media3Version"
   implementation "androidx.media3:media3-ui:$media3Version"

@@ -109,6 +109,7 @@ export default function PlayerScreen() {
   const hudTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(0);
+  const toldNoSound = useRef(false);
   const brightness = useRef<number | null>(null);
   const volume = useRef<number>(getVolume());
   const posRef = useRef(pos);
@@ -392,7 +393,16 @@ export default function PlayerScreen() {
           setWatched(id, true);
         }}
         onError={(e) => (e.nativeEvent.fatal ? setFatal(e.nativeEvent.message) : showToast(e.nativeEvent.message))}
-        onTracks={(e) => setTracks(e.nativeEvent)}
+        onTracks={(e) => {
+          const t = e.nativeEvent;
+          setTracks(t);
+          // Say why a video is silent (once), instead of leaving people to guess.
+          const unplayable = t.audio.find((a) => a.unsupported);
+          if (unplayable && t.audio.every((a) => a.unsupported) && !toldNoSound.current) {
+            toldNoSound.current = true;
+            showToast(`No sound: ${unplayable.unsupported}.`);
+          }
+        }}
         onPlaybackState={(e) => {
           const s = e.nativeEvent;
           setBuffering(s.buffering);

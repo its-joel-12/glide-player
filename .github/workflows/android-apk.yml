@@ -48,6 +48,22 @@ jobs:
       - run: npm run lint
       - run: npm test
 
+      # FFmpeg's audio decoders (Dolby Digital AC-3, E-AC-3, TrueHD, DTS…) for sound phones can't decode
+      # themselves. Built once with the NDK and cached; rebuilt only when scripts/ffmpeg/ changes.
+      - uses: actions/cache@v4
+        id: ffmpeg
+        with:
+          path: modules/glide-engine/android/src/main/jni/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('scripts/ffmpeg/*.sh', 'node_modules/react-native/gradle/libs.versions.toml') }}
+
+      - name: FFmpeg audio decoders
+        if: steps.ffmpeg.outputs.cache-hit != 'true'
+        run: |
+          NDK_VERSION=$(sed -n 's/^ndkVersion = "\(.*\)"/\1/p' node_modules/react-native/gradle/libs.versions.toml)
+          NDK="$ANDROID_HOME/ndk/$NDK_VERSION"
+          if [ ! -d "$NDK" ]; then yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;$NDK_VERSION" > /dev/null; fi
+          bash scripts/ffmpeg/build.sh "$NDK"
+
       - name: Signing key (from secrets; never stored in the repo)
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}

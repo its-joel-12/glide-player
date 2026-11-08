@@ -185,6 +185,15 @@ if (isWin) {
   console.log(`CMake:       ${cmakeVersion} (ninja ${(ninja.stdout || '?').trim()})`);
 }
 
+// FFmpeg audio decoders (scripts/ffmpeg/build.sh; GitHub Actions builds them). Optional: without them
+// the APK still works, but AC-3/DTS/TrueHD sound stays silent on phones that can't decode it.
+const ffmpegLibs = path.join(root, 'modules', 'glide-engine', 'android', 'src', 'main', 'jni', 'ffmpeg', 'android-libs');
+console.log(
+  exists(ffmpegLibs)
+    ? 'FFmpeg:      audio decoders included (AC-3, E-AC-3, TrueHD, DTS, MP3, ALAC)'
+    : 'FFmpeg:      not built, so AC-3/DTS sound plays only on phones that decode it (Linux/WSL: scripts/ffmpeg/build.sh)',
+);
+
 // 4. Generate the native project (android/ is git-ignored). Prebuild rewrites package.json scripts; put them back.
 // The Gradle daemon from the last build keeps files in android/ and node_modules open (on Windows that
 // makes prebuild fail with EBUSY when it replaces android/), so stop it before touching anything.
