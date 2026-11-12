@@ -8,6 +8,7 @@ import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.Effect
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -78,6 +79,20 @@ internal object PlayerHolder {
       .setVideoChangeFrameRateStrategy(C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF)
       .setSeekBackIncrementMs(10_000)
       .setSeekForwardIncrementMs(10_000)
+      // For files on the phone Media3 reads 50 s ahead, then nothing more until under 1 s is left.
+      // With smoothing off the effect pipeline and decoder already hold more than 1 s of frames, so
+      // the video ran out of input before that point, playback went to "buffering" and, with the
+      // position stopped, reading never resumed. Start reading again with 10 s left instead.
+      .setLoadControl(
+        DefaultLoadControl.Builder()
+          .setBufferDurationsMsForLocalPlayback(
+            /* minBufferMs= */ 10_000,
+            /* maxBufferMs= */ DefaultLoadControl.DEFAULT_MAX_BUFFER_FOR_LOCAL_PLAYBACK_MS,
+            /* bufferForPlaybackMs= */ DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_FOR_LOCAL_PLAYBACK_MS,
+            /* bufferForPlaybackAfterRebufferMs= */ DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_FOR_LOCAL_PLAYBACK_MS,
+          )
+          .build()
+      )
       // Files without a seek index (some MP3/AAC/AMR streams) can still be skipped through by
       // assuming a constant bitrate; long MPEG-TS recordings get a wider search for their duration.
       .setMediaSourceFactory(
