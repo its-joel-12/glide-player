@@ -148,6 +148,22 @@ eq(ids(ls.sortVideos(lib, 'nameDesc')), 'cab', 'sort name Z–A');
 eq(ids(ls.sortVideos(lib, 'longest')), 'bac', 'sort longest');
 eq(ids(ls.sortVideos(lib, 'shortest')), 'cab', 'sort shortest');
 eq(ids(lib), 'abc', 'sorting leaves the original alone');
+const sr = require('../src/lib/library-search.ts');
+eq(sr.normalizeForSearch('The.Matrix_(1999)-1080p'), 'the matrix 1999 1080p', 'search: separators become spaces');
+eq(sr.normalizeForSearch('Amélie Café'), 'amelie cafe', 'search: accents ignored');
+eq(sr.queryWords('  '), [], 'search: blank query has no words');
+const films = [
+  { id: 'm', title: 'The.Matrix.1999.1080p' },
+  { id: 'r', title: 'Matrix Reloaded 720p' },
+  { id: 'a', title: 'Amélie (2001)' },
+  { id: 'v', title: 'VID_20261103_101500' },
+];
+eq(ids(sr.searchVideos(films, '')), 'mrav', 'search: empty query keeps everything in order');
+eq(ids(sr.searchVideos(films, 'MATRIX')), 'mr', 'search: case ignored');
+eq(ids(sr.searchVideos(films, '1080 matrix')), 'm', 'search: every word, any order');
+eq(ids(sr.searchVideos(films, 'amelie')), 'a', 'search: accent-free query finds accented name');
+eq(ids(sr.searchVideos(films, 'vid 2026')), 'v', 'search: underscores split words');
+eq(ids(sr.searchVideos(films, 'matrix 4k')), '', 'search: no match');
 eq(r.isFinished(7_150_000, 7_200_000), true, 'in the credits → watched');
 eq(r.isFinished(3_600_000, 7_200_000), false, 'halfway → not watched');
 eq(r.isFinished(5_000, 0), false, 'unknown length → not watched');

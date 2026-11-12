@@ -34,6 +34,7 @@ them; Glide plays **video files on your phone** (gallery, Downloads, SD card, an
   (converted to AAC when MP4 can't hold it and the phone can decode it), and text subtitles (SRT/ASS/
   WebVTT) are saved alongside and load automatically when the copy plays in Glide.
 - **Library:** all videos as big thumbnails or a compact list, sorted by date, name or length;
+  search by name (every word, any order, so "matrix 1080" finds `The.Matrix.1999.1080p`);
   folders, thumbnails, durations, a tick on videos you've watched to the end, *Continue watching* with
   resume positions (⋮ or long-press a card to remove it, or mark it as watched); share or delete a video from its menu (long-press or ⋮); open any other file from
   the folder button.

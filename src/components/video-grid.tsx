@@ -1,6 +1,6 @@
 import { shareVideos } from 'glide-engine';
-import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, Pressable, RefreshControl, StyleSheet, useWindowDimensions, View } from 'react-native';
+import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/button';
@@ -14,6 +14,7 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { columnsFor, mergeUnique, toRows } from '@/lib/grid';
 import { albumById, fetchAllVideos, type VideoItem } from '@/lib/library';
+import { matchesWords, normalizeForSearch, queryWords } from '@/lib/library-search';
 import { LIBRARY_SORTS, sortVideos } from '@/lib/library-sort';
 import { openPlayer } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
@@ -38,6 +39,10 @@ type Props = {
  *
  * Long-press a video (or the select button) to pick several; a bar at the bottom then shares,
  * deletes or marks them watched. Back or ✕ stops picking. The ⋮ menu is for one video.
+ *
+ * The search button turns the toolbar into a search field that filters by file name (every word,
+ * any order, case and accents ignored); the header (Continue watching) is hidden meanwhile, the
+ * sort still applies, and picking works on the results. Back or ✕ closes the search.
  */
 export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const theme = useTheme();
@@ -52,12 +57,21 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const [actionsFor, setActionsFor] = useState<VideoItem | null>(null);
   const [sortOpen, setSortOpen] = useState(false);
   const [selection, setSelection] = useState<Selection>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  /** Filtering lags the typing slightly on huge libraries instead of making each key wait for it. */
+  const deferredQuery = useDeferredValue(query);
   const insets = useSafeAreaInsets();
   /** Bumped on every load; answers to older requests are ignored. */
   const generation = useRef(0);
 
   const list = prefs.libraryView === 'list';
-  const sorted = sortVideos(items, prefs.librarySort);
+  /** Names prepared for matching once per load, not on every key press. */
+  const searchNames = useMemo(() => new Map(items.map((v) => [v.id, normalizeForSearch(v.title)])), [items]);
+  const words = searchOpen ? queryWords(deferredQuery) : [];
+  const filtering = words.length > 0;
+  const shown = filtering ? items.filter((v) => matchesWords(searchNames.get(v.id) ?? '', words)) : items;
+  const sorted = sortVideos(shown, prefs.librarySort);
   const columns = list ? 1 : columnsFor(Math.min(width, MaxContentWidth) - Spacing.three * 2, 170, Spacing.three);
   const rows = toRows(sorted, columns);
   const sortLabel = LIBRARY_SORTS.find((s) => s.value === prefs.librarySort)?.label ?? '';
@@ -70,15 +84,22 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const tap = (v: VideoItem) => (selecting ? setSelection((s) => toggleSelected(s, v.id)) : openPlayer(v));
   const longPress = (v: VideoItem) => setSelection((s) => toggleSelected(s, v.id));
 
-  // Android back stops picking instead of leaving the screen.
+  const closeSearch = () => {
+    Keyboard.dismiss();
+    setQuery('');
+    setSearchOpen(false);
+  };
+
+  // Android back stops picking, then closes the search, before it leaves the screen.
   useEffect(() => {
-    if (!selecting) return;
+    if (!selecting && !searchOpen) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      setSelection(null);
+      if (selecting) setSelection(null);
+      else closeSearch();
       return true;
     });
     return () => sub.remove();
-  }, [selecting]);
+  }, [selecting, searchOpen]);
 
   const sharePicked = () => {
     if (!picked.length) return;
@@ -124,7 +145,43 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
     void load(++generation.current);
   }, [albumId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const toolbar = (
+  const searchBar = (
+    <View style={styles.toolbar}>
+      <View style={[styles.search, { backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
+        <Icon ios="magnifyingglass" md="search" size={18} color={theme.textSecondary} />
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder={title ? `Search ${title.toLowerCase()}` : 'Search videos'}
+          placeholderTextColor={theme.textSecondary}
+          autoFocus
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+          onSubmitEditing={() => Keyboard.dismiss()}
+          accessibilityLabel="Search videos by name"
+          style={[styles.searchInput, { color: theme.text }]}
+        />
+        {query ? (
+          <Pressable onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="Clear search" hitSlop={10}>
+            <Icon ios="xmark.circle.fill" md="cancel" size={18} color={theme.textSecondary} />
+          </Pressable>
+        ) : null}
+      </View>
+      <IconButton icon={{ ios: 'xmark', md: 'close' }} label="Close search" onPress={closeSearch} size={20} />
+    </View>
+  );
+
+  const toolbar = searchOpen ? (
+    <View>
+      {searchBar}
+      {filtering && sorted.length ? (
+        <ThemedText type="small" themeColor="textSecondary" style={styles.results} accessibilityLiveRegion="polite">
+          {sorted.length === 1 ? '1 video' : `${sorted.length} videos`} of {items.length}
+        </ThemedText>
+      ) : null}
+    </View>
+  ) : (
     <View style={styles.toolbar}>
       <ThemedText type="label" themeColor="textSecondary" style={{ flex: 1 }} numberOfLines={1}>
         {title ? `${title}${items.length ? ` · ${items.length}` : ''}` : items.length ? `${items.length} videos` : ''}
@@ -139,6 +196,7 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
           {sortLabel}
         </ThemedText>
       </Pressable>
+      <IconButton icon={{ ios: 'magnifyingglass', md: 'search' }} label="Search videos" onPress={() => setSearchOpen(true)} size={20} />
       <IconButton
         icon={{ ios: 'checkmark.circle', md: 'checklist' }}
         label="Select videos"
@@ -164,11 +222,13 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
         keyExtractor={(row) => row[0].id}
         ListHeaderComponent={
           <View>
-            {header}
+            {searchOpen ? null : header}
             {toolbar}
           </View>
         }
         contentContainerStyle={[styles.content, list && { gap: Spacing.one }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -220,7 +280,7 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
           ) : (
             <View style={styles.empty}>
               <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
-                {error ?? emptyText}
+                {error ?? (filtering && items.length ? `No videos match “${deferredQuery.trim()}”.` : emptyText)}
               </ThemedText>
             </View>
           )
@@ -293,6 +353,9 @@ const styles = StyleSheet.create({
   },
   content: { paddingHorizontal: Spacing.three, gap: Spacing.three, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   toolbar: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.one },
+  search: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: Spacing.two, borderWidth: 1, borderRadius: 20, paddingHorizontal: 12, height: 40 },
+  searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  results: { marginBottom: Spacing.one },
   sort: { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderRadius: 16, paddingHorizontal: 10, paddingVertical: 5, maxWidth: 180 },
   row: { flexDirection: 'row', gap: Spacing.three },
   pad: { flex: 1 },
