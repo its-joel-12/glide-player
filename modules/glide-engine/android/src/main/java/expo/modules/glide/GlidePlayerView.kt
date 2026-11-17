@@ -351,9 +351,16 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
   fun setPaused(paused: Boolean) {
     if (paused) {
       if (player.playWhenReady) player.pause()
-    } else if (!player.playWhenReady || player.playbackState == Player.STATE_ENDED) {
-      if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
-      player.play()
+    } else {
+      // After about 10 minutes paused in the background, Media3 drops the playback service and the
+      // player is left stopped (idle) with the video still loaded. play() alone only flips
+      // playWhenReady, so the button showed "pause" while nothing played. Load it again first; it
+      // resumes from the same position.
+      if (player.playbackState == Player.STATE_IDLE && player.currentMediaItem != null) player.prepare()
+      if (!player.playWhenReady || player.playbackState == Player.STATE_ENDED) {
+        if (player.playbackState == Player.STATE_ENDED) player.seekTo(0)
+        player.play()
+      }
     }
   }
 
