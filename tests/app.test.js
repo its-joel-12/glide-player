@@ -298,5 +298,30 @@ eq(tm.restoreChoice(subs, { label: 'movie.srt', language: '', index: -1 }), '6:0
 eq(tm.restoreChoice([], { label: 'movie.srt', language: '', index: 0 }), undefined, 'no tracks yet');
 eq(Object.keys(tm.pruneMemory({ a: { updatedAt: 1 }, b: { updatedAt: 3 }, c: { updatedAt: 2 } }, 2)).sort(), ['b', 'c'], 'prune keeps the newest');
 
+// skip buttons per series
+const sk = require('../src/lib/skip-rules.ts');
+const B = (s = 90) => [{ id: 'b', label: 'Skip OP', seconds: s }];
+const jjk = { id: 'j', match: 'Jujutsu Kaisen', buttons: B(), updatedAt: 1 };
+const jjk0 = { id: 'j0', match: 'jujutsu kaisen 0', buttons: B(5), updatedAt: 1 };
+eq(sk.findRule('[SubsPlease] Jujutsu Kaisen - 29 (1080p) [A1B2]', [jjk])?.id, 'j', 'skip: release-group name matches');
+eq(sk.findRule('Jujutsu.Kaisen.S02E05.1080p.WEB', [jjk])?.id, 'j', 'skip: dotted name matches');
+eq(sk.findRule('jujutsu_kaisen_ep5', [jjk])?.id, 'j', 'skip: underscores match');
+eq(sk.findRule('Jujutsu Kaisen 0 (2021) 1080p', [jjk, jjk0])?.id, 'j0', 'skip: longest match wins');
+eq(sk.findRule('One Piece - 1100', [jjk]), undefined, 'skip: other series no match');
+eq(sk.findRule('Jujutsu Kaisen 01', [{ ...jjk, match: '  ' }]), undefined, 'skip: empty name never matches');
+eq(sk.findRule('Jujutsu Kaisen 01', [{ ...jjk, buttons: [] }]), undefined, 'skip: rule without buttons ignored');
+eq(sk.seriesFromTitle('[SubsPlease] Jujutsu Kaisen - 29 (1080p) [A1B2C3D4]'), 'jujutsu kaisen', 'skip: series from release name');
+eq(sk.seriesFromTitle('Jujutsu.Kaisen.S02E05.1080p.WEB-DL.x264'), 'jujutsu kaisen', 'skip: series from SxxEyy');
+eq(sk.seriesFromTitle('jujutsu_kaisen_ep5'), 'jujutsu kaisen', 'skip: series from ep5');
+eq(sk.seriesFromTitle('Frieren 12 v2'), 'frieren', 'skip: trailing episode + version');
+eq(sk.seriesFromTitle('Attack on Titan Season 3 Episode 4'), 'attack on titan', 'skip: season words');
+eq(sk.seriesFromTitle('Holiday clip'), 'holiday clip', 'skip: plain name kept');
+eq(sk.seriesFromTitle('[Group] 1080p'), 'group 1080p', 'skip: falls back to the whole name');
+eq(sk.clampSkipSeconds(0), 90, 'skip: bad seconds → default');
+eq(sk.clampSkipSeconds(5000), 600, 'skip: seconds capped');
+eq(sk.normalizeRules([jjk, { id: 1 }, null, { id: 'x', match: 'a', buttons: [{ id: 'b', label: '', seconds: -3 }] }]).map((r) => r.buttons[0].label + r.buttons[0].seconds), ['Skip OP90', 'Skip intro1'], 'skip: saved rules cleaned');
+eq(sk.normalizeRules('junk'), [], 'skip: junk saved data');
+eq(sk.skipButtonText({ id: 'b', label: ' ', seconds: 85 }), 'Skip intro +85s', 'skip: button text');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

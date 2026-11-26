@@ -1,18 +1,22 @@
 import Constants from 'expo-constants';
 import { router } from 'expo-router';
 import { getDisplayInfo } from 'glide-engine';
-import { useMemo, type ReactNode } from 'react';
-import { Platform, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { IconButton } from '@/components/button';
 import { DelayRow } from '@/components/delay-row';
+import { Icon } from '@/components/icon';
 import { Segmented } from '@/components/segmented';
+import { SkipRuleEditor } from '@/components/skip-rule-editor';
 import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
 import { ThemedText } from '@/components/themed-text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { setPreference, usePreferences } from '@/lib/preferences';
+import { addSkipRule, useSkipRules } from '@/lib/skip-buttons';
+import { skipButtonText } from '@/lib/skip-rules';
 import { AUDIO_DELAY_RANGE, HoldSpeedOptions, SeekStepOptions, SharpnessOptions, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS } from '@/lib/settings-schema';
 
 const isWeb = Platform.OS === 'web';
@@ -57,6 +61,52 @@ function Field({ label, detail, children }: { label: string; detail?: string; ch
         </ThemedText>
       ) : null}
     </View>
+  );
+}
+
+/** Every series with skip buttons; tap one to change it. */
+function SkipRules() {
+  const theme = useTheme();
+  const rules = useSkipRules();
+  const [open, setOpen] = useState<string | null>(null);
+  return (
+    <>
+      <ThemedText type="caption" themeColor="textSecondary">
+        Buttons that jump ahead a set number of seconds (past an opening or ending song). They show when you tap the screen on a video whose file
+        name contains all the words of the series name. You can also add them from the player (the skip icon at the top).
+      </ThemedText>
+      {rules.map((r) =>
+        open === r.id ? (
+          <View key={r.id} style={[styles.skipOpen, { borderColor: theme.border }]}>
+            <SkipRuleEditor rule={r} onDeleted={() => setOpen(null)} />
+            <Pressable onPress={() => setOpen(null)} accessibilityRole="button" style={styles.done}>
+              <ThemedText type="smallBold" themeColor="accentText">
+                Done
+              </ThemedText>
+            </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            key={r.id}
+            onPress={() => setOpen(r.id)}
+            accessibilityRole="button"
+            accessibilityHint="Opens this series' skip buttons"
+            style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
+            <View style={{ flex: 1 }}>
+              <ThemedText>{r.match.trim() || 'No series name yet'}</ThemedText>
+              <ThemedText type="caption" themeColor="textSecondary">
+                {r.buttons.length ? r.buttons.map(skipButtonText).join(' · ') : 'No buttons'}
+              </ThemedText>
+            </View>
+            <Icon ios="chevron.right" md="chevron_right" size={20} color={theme.textSecondary} />
+          </Pressable>
+        ),
+      )}
+      <Pressable onPress={() => setOpen(addSkipRule('').id)} accessibilityRole="button" style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
+        <Icon ios="plus" md="add" size={20} color={theme.accentText} />
+        <ThemedText themeColor="accentText">Add a series</ThemedText>
+      </Pressable>
+    </>
   );
 }
 
@@ -179,6 +229,10 @@ export default function SettingsScreen() {
           </Field>
         </Group>
 
+        <Group title="Skip buttons">
+          <SkipRules />
+        </Group>
+
         <Group title="Audio & subtitle sync">
           <View style={styles.field}>
             <DelayRow
@@ -229,7 +283,7 @@ export default function SettingsScreen() {
             <ThemedText type="caption" themeColor="textSecondary">
               MEMC (motion estimation, motion compensation) finds how each block of the picture moves between two frames and draws new
               frames along those paths. Netflix, Prime Video and YouTube protect their streams, so Glide plays your own video files.
-              {isWeb ? ' Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare · V motion vectors · F full screen · I frame rates · J/K audio delay −/+ · G/H subtitle delay −/+.' : ''}
+              {isWeb ? ' Keys: Space play/pause · ←/→ seek · ↑/↓ volume · M smoothing mode · C split compare · V motion vectors · F full screen · I frame rates · S skip button · J/K audio delay −/+ · G/H subtitle delay −/+.' : ''}
             </ThemedText>
           </View>
         </Group>
@@ -245,4 +299,6 @@ const styles = StyleSheet.create({
   group: { borderWidth: 1, borderRadius: Radius.card, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, gap: Spacing.two },
   row: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three, paddingVertical: Spacing.one },
   field: { gap: Spacing.two, paddingVertical: Spacing.one },
+  skipOpen: { borderWidth: 1, borderRadius: Radius.card, padding: Spacing.two, gap: Spacing.two },
+  done: { alignSelf: 'flex-end', paddingHorizontal: 12, paddingVertical: 8 },
 });

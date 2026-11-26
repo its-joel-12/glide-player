@@ -7,6 +7,7 @@ import { SeekBar } from '@/components/player/seek-bar';
 import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
 import { formatTime } from '@/lib/format';
+import { skipButtonText, type SkipButton } from '@/lib/skip-rules';
 import { formatDelay, type SmoothingMode } from '@/lib/settings-schema';
 
 type IconName = { ios: SFSymbol; md: AndroidSymbol };
@@ -67,6 +68,11 @@ export type ControlsProps = {
   onLock: () => void;
   /** Android: picture-in-picture. */
   onPip?: () => void;
+  /** This series' skip buttons (empty = none set up). */
+  skipButtons: SkipButton[];
+  onSkip: (b: SkipButton) => void;
+  /** Opens the skip-button setup for this series. */
+  onOpenSkips: () => void;
 };
 
 /** "Audio +150 ms · Subs −1 s" when a delay is set; tap to adjust. */
@@ -118,6 +124,7 @@ export function PlayerControls(p: ControlsProps) {
           ) : null}
         </Pressable>
         <Btn icon={{ ios: 'rectangle.split.2x1', md: 'compare' }} label="Split compare" onPress={p.onToggleCompare} active={p.compare} />
+        <Btn icon={{ ios: 'forward.end', md: 'skip_next' }} label="Skip buttons for this series" onPress={p.onOpenSkips} />
         <Btn icon={{ ios: 'captions.bubble', md: 'subtitles' }} label="Audio and subtitles" onPress={p.onOpenTracks} />
         <Btn icon={{ ios: 'slider.horizontal.3', md: 'tune' }} label="Picture settings: smoothing and upscaling" onPress={p.onOpenSmoothing} />
       </View>
@@ -140,6 +147,25 @@ export function PlayerControls(p: ControlsProps) {
       </View>
 
       <View style={[styles.bottom, pad, { paddingBottom: p.insets.bottom + 6 }]}>
+        {p.skipButtons.length ? (
+          <View style={styles.skips}>
+            {p.skipButtons.map((b) => (
+              <Pressable
+                key={b.id}
+                onPress={() => p.onSkip(b)}
+                onLongPress={p.onOpenSkips}
+                accessibilityRole="button"
+                accessibilityLabel={`${b.label}: forward ${b.seconds} seconds`}
+                accessibilityHint="Long-press to change the skip buttons"
+                style={({ pressed }) => [styles.skip, pressed && { opacity: 0.75 }]}>
+                <ThemedText type="smallBold" color={Screen.black} style={{ fontSize: 14 }}>
+                  {skipButtonText(b)}
+                </ThemedText>
+                <Icon ios="forward.end.fill" md="skip_next" size={18} color={Screen.black} />
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
         <View style={styles.row}>
           <ThemedText font="mono" color={Screen.text} style={styles.time}>
             {formatTime(p.positionMs)}
@@ -197,6 +223,8 @@ const styles = StyleSheet.create({
   delay: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: Screen.track, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4, marginLeft: 6 },
   fix: { backgroundColor: Screen.accent, borderColor: Screen.accent },
   speed: { paddingHorizontal: 10, paddingVertical: 8 },
+  skips: { flexDirection: 'row', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 10, marginBottom: 12 },
+  skip: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: Screen.text, borderRadius: 6, paddingHorizontal: 14, paddingVertical: 9 },
   btn: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
   btnActive: { backgroundColor: 'rgba(240,162,74,0.18)' },
 });

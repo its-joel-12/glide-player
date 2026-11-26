@@ -1,14 +1,18 @@
+import { useState } from 'react';
 import { StyleSheet, Switch, View } from 'react-native';
 
 import { DelayRow } from '@/components/delay-row';
 import { Segmented } from '@/components/segmented';
 import { Sheet, SheetOption } from '@/components/sheet';
+import { SkipRuleEditor } from '@/components/skip-rule-editor';
 import { ThemedText } from '@/components/themed-text';
 import { SubtitleStyleEditor } from '@/components/subtitle-style-editor';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFps } from '@/lib/format';
 import { formatResolution } from '@/lib/format';
+import { addSkipRule, useSkipRules } from '@/lib/skip-buttons';
+import { findRule, seriesFromTitle } from '@/lib/skip-rules';
 import { AUDIO_DELAY_RANGE, formatDelay, SharpnessOptions, SUBTITLE_DELAY_RANGE, type AnalysisQuality, type SmoothingMode, type SubtitleStyle } from '@/lib/settings-schema';
 import type { Track, TracksEvent } from 'glide-engine';
 
@@ -217,6 +221,38 @@ export function SpeedSheet({ visible, onClose, rate, onRate }: { visible: boolea
           onPress={() => onRate(s)}
         />
       ))}
+    </Sheet>
+  );
+}
+
+/** Skip buttons for the playing video's series: add them, or change the matched series' buttons. */
+export function SkipSheet({ visible, onClose, title }: { visible: boolean; onClose: () => void; title: string }) {
+  const rules = useSkipRules();
+  // Keep editing the same series even while its name is changed so it no longer matches this video.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const rule = rules.find((r) => r.id === editingId) ?? findRule(title, rules);
+  const suggested = seriesFromTitle(title);
+  return (
+    <Sheet
+      visible={visible}
+      title="Skip buttons"
+      onClose={() => {
+        setEditingId(null);
+        onClose();
+      }}>
+      {rule ? (
+        <SkipRuleEditor key={rule.id} rule={rule} title={title} onDeleted={() => setEditingId(null)} />
+      ) : (
+        <>
+          <ThemedText themeColor="textSecondary">
+            Add a button that jumps ahead a set number of seconds (like past an opening song). It shows whenever you tap the screen on any episode of this series.
+          </ThemedText>
+          <SheetOption label={`Add for “${suggested}”`} detail="Starts with “Skip intro +90s”; you can change the name, label and seconds." onPress={() => setEditingId(addSkipRule(suggested).id)} />
+        </>
+      )}
+      <ThemedText type="caption" themeColor="textSecondary">
+        All series are listed in Settings → Skip buttons.
+      </ThemedText>
     </Sheet>
   );
 }

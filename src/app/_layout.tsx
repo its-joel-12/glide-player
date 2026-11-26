@@ -18,6 +18,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { loadPreferences, usePreferences } from '@/lib/preferences';
 import { loadResume } from '@/lib/resume';
 import { loadSidecars } from '@/lib/sidecars';
+import { loadSkipRules } from '@/lib/skip-buttons';
 import { loadTrackMemory } from '@/lib/track-memory';
 import { loadWatched } from '@/lib/watched';
 
@@ -26,6 +27,7 @@ void loadPreferences();
 void loadResume();
 void loadSidecars();
 void loadTrackMemory();
+void loadSkipRules();
 void loadWatched();
 
 export default function RootLayout() {

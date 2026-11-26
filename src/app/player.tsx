@@ -27,7 +27,7 @@ import { Icon } from '@/components/icon';
 import { PlayerControls } from '@/components/player/controls';
 import { GestureLayer } from '@/components/player/gesture-layer';
 import { HudPill, type Hud } from '@/components/player/hud';
-import { SmoothingSheet, SpeedSheet, SubtitleStyleSheet, TracksSheet } from '@/components/player/sheets';
+import { SkipSheet, SmoothingSheet, SpeedSheet, SubtitleStyleSheet, TracksSheet } from '@/components/player/sheets';
 import { ThemedText } from '@/components/themed-text';
 import { Screen } from '@/constants/theme';
 import { containerLabel, formatFps, formatOffset, formatTime, seekTarget } from '@/lib/format';
@@ -35,13 +35,15 @@ import { clamp } from '@/lib/gestures';
 import { openSeekableCopy, pickSubtitleFile } from '@/lib/navigation';
 import { getSidecars, setSidecars } from '@/lib/sidecars';
 import { keepSubtitleFile, subtitleFileExists } from '@/lib/subtitle-files';
+import { useSkipRules } from '@/lib/skip-buttons';
+import { findRule, type SkipButton } from '@/lib/skip-rules';
 import { getTrackMemory, pickOf, rememberTrack, restoreChoice } from '@/lib/track-memory';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResume, getResume, isFinished, saveResume, startPosition } from '@/lib/resume';
 import { setWatched } from '@/lib/watched';
 import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS, type SmoothingMode } from '@/lib/settings-schema';
 
-type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | null;
+type SheetName = 'smoothing' | 'tracks' | 'subtitleStyle' | 'speed' | 'skips' | null;
 const isWeb = Platform.OS === 'web';
 const NOT_SEEKABLE =
   'This file can’t be skipped through: it has no seek index (common with some MKV files and recordings). Tap “Make seekable” to save an MP4 copy you can skip through.';
@@ -107,6 +109,9 @@ export default function PlayerScreen() {
     return prefs.autoRotate && w > 0 && h > 0 ? w >= h : null;
   });
   const display = useMemo(() => getDisplayInfo(), []);
+  // Skip buttons set up for this series (matched by file name).
+  const skipRules = useSkipRules();
+  const skipButtons = useMemo(() => findRule(title, skipRules)?.buttons ?? [], [title, skipRules]);
 
   const hudTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -215,6 +220,10 @@ export default function PlayerScreen() {
     seekTo(pos.positionMs + delta);
     if (pos.seekable) flashHud({ kind: 'seek', label: formatOffset(delta), detail: formatTime(seekTarget(pos.positionMs + delta, pos.durationMs)) });
   };
+  const skip = (b: SkipButton) => {
+    seekBy(b.seconds * 1000);
+    poke();
+  };
   const playPause = () => {
     if (ended) {
       setEnded(false);
@@ -298,6 +307,7 @@ export default function PlayerScreen() {
       else if (k === 'j' || k === 'k') changeAudioDelay(audioDelayMs + (k === 'k' ? DELAY_STEP_MS : -DELAY_STEP_MS));
       else if (k === 'g' || k === 'h') changeSubtitleDelay(subtitleDelayMs + (k === 'h' ? DELAY_STEP_MS : -DELAY_STEP_MS));
       else if (k === 'i') toggleStats();
+      else if (k === 's' && skipButtons.length) skip(skipButtons[0]);
       else if (k === 'arrowup' || k === 'arrowdown') {
         volume.current = setVolume(getVolume() + (k === 'arrowup' ? 0.1 : -0.1));
         flashHud({ kind: 'volume', value: volume.current }, 600);
@@ -556,6 +566,9 @@ export default function PlayerScreen() {
                     setControls(false);
                   }}
                   onPip={isWeb ? undefined : () => void enterPip()}
+                  skipButtons={skipButtons}
+                  onSkip={skip}
+                  onOpenSkips={() => setSheet('skips')}
                 />
               ) : null}
             </>
@@ -674,6 +687,7 @@ export default function PlayerScreen() {
         value={prefs.subtitleStyle}
         onChange={(st) => setPreference('subtitleStyle', st)}
       />
+      <SkipSheet visible={sheet === 'skips'} onClose={() => setSheet(null)} title={title} />
       <SpeedSheet
         visible={sheet === 'speed'}
         onClose={() => setSheet(null)}
