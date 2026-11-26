@@ -323,5 +323,38 @@ eq(sk.normalizeRules([jjk, { id: 1 }, null, { id: 'x', match: 'a', buttons: [{ i
 eq(sk.normalizeRules('junk'), [], 'skip: junk saved data');
 eq(sk.skipButtonText({ id: 'b', label: ' ', seconds: 85 }), 'Skip intro +85s', 'skip: button text');
 
+eq(sk.seriesFromTitle('Blade.Runner.2049.2017.1080p'), 'blade runner 2049 2017', 'skip: year kept');
+
+// series grouping
+const se = require('../src/lib/series.ts');
+eq(se.episodeFromTitle('Jujutsu.Kaisen.S02E05.1080p'), { season: 2, episode: 5 }, 'series: SxxEyy');
+eq(se.episodeFromTitle('Show 2x07'), { season: 2, episode: 7 }, 'series: 2x07');
+eq(se.episodeFromTitle('Attack on Titan Season 3 Episode 4'), { season: 3, episode: 4 }, 'series: season words');
+eq(se.episodeFromTitle('jujutsu_kaisen_ep5'), { episode: 5 }, 'series: ep5');
+eq(se.episodeFromTitle('[SubsPlease] Jujutsu Kaisen - 29 (1080p) [A1B2]'), { episode: 29 }, 'series: release name number');
+eq(se.episodeFromTitle('Frieren 12 v2'), { episode: 12 }, 'series: number + version');
+eq(se.episodeFromTitle('Holiday clip'), null, 'series: no number');
+eq(se.episodeFromTitle('Movie 1080p'), null, 'series: quality is not an episode');
+eq(se.episodeLabel({ season: 2, episode: 5 }), 'S2 E5', 'series: label');
+eq(se.episodeLabel({ episode: 29 }), 'Episode 29', 'series: label no season');
+eq(se.seriesTitle('attack on titan'), 'Attack on Titan', 'series: title case');
+const V = (id, title, t = 0) => ({ id, title, modifiedAt: t });
+const shows = [
+  V('a', '[SubsPlease] Jujutsu Kaisen - 10 (1080p)', 1),
+  V('b', 'Jujutsu.Kaisen.S01E02.1080p', 2),
+  V('c', '[SubsPlease] Jujutsu Kaisen - 9 (1080p)', 3),
+  V('d', 'Holiday clip', 9),
+  V('e', 'Frieren 02', 4),
+  V('f', 'Frieren 01', 5),
+  V('g', 'Blade Runner 2049', 6),
+  V('h', 'Blade Runner', 7),
+];
+const groups = se.groupSeries(shows);
+eq(groups.map((x) => `${x.title}:${x.items.map((v) => v.id).join('')}`), ['Frieren:fe', 'Jujutsu Kaisen:bca'], 'series: grouped, newest first, episode order, singles left out');
+eq(se.videosOfSeries(shows, 'frieren').map((v) => v.id), ['f', 'e'], 'series: videos of one series');
+eq(se.sortEpisodes([V('x', 'Show extras'), V('y', 'Show S02E01'), V('z', 'Show S01E03')]).map((v) => v.id), ['z', 'y', 'x'], 'series: unnumbered last');
+eq(se.nextEpisode(['a', 'b', 'c'], (v) => v === 'a'), 'b', 'series: next unwatched');
+eq(se.nextEpisode(['a'], () => true), null, 'series: all watched');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

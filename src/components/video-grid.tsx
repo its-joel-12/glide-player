@@ -3,7 +3,7 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState, type ReactEleme
 import { ActivityIndicator, Alert, BackHandler, FlatList, Keyboard, Pressable, RefreshControl, StyleSheet, TextInput, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { IconButton } from '@/components/button';
+import { Button, IconButton } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { Sheet, SheetOption } from '@/components/sheet';
 import { ThemedText } from '@/components/themed-text';
@@ -20,11 +20,14 @@ import { openPlayer } from '@/lib/navigation';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResumeMany, progressFraction, useResumeEntries } from '@/lib/resume';
 import { pruneSelection, selectAllToggle, toggleSelected, type Selection } from '@/lib/selection';
+import { episodeFromTitle, episodeLabel, nextEpisode, videosOfSeries } from '@/lib/series';
 import { setWatchedMany, useWatched, watchedIn } from '@/lib/watched';
 
 type Props = {
   /** Only videos in this folder. */
   albumId?: string;
+  /** Only the episodes of this series (a `seriesFromTitle` key), in episode order instead of the chosen sort. */
+  series?: string;
   /** Shown above the list (scrolls with it). */
   header?: ReactElement | null;
   /** Label left of the sort and view buttons, e.g. "All videos". */
@@ -44,7 +47,7 @@ type Props = {
  * any order, case and accents ignored); the header (Continue watching) is hidden meanwhile, the
  * sort still applies, and picking works on the results. Back or ✕ closes the search.
  */
-export function VideoGrid({ albumId, header, title, emptyText }: Props) {
+export function VideoGrid({ albumId, series, header, title, emptyText }: Props) {
   const theme = useTheme();
   const prefs = usePreferences();
   const { width } = useWindowDimensions();
@@ -70,8 +73,10 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
   const searchNames = useMemo(() => new Map(items.map((v) => [v.id, normalizeForSearch(v.title)])), [items]);
   const words = searchOpen ? queryWords(deferredQuery) : [];
   const filtering = words.length > 0;
-  const shown = filtering ? items.filter((v) => matchesWords(searchNames.get(v.id) ?? '', words)) : items;
-  const sorted = sortVideos(shown, prefs.librarySort);
+  /** The videos this screen is about: all of them, or one series' episodes in order. */
+  const base = useMemo(() => (series ? videosOfSeries(items, series) : items), [items, series]);
+  const shown = filtering ? base.filter((v) => matchesWords(searchNames.get(v.id) ?? '', words)) : base;
+  const sorted = series ? shown : sortVideos(shown, prefs.librarySort);
   const columns = list ? 1 : columnsFor(Math.min(width, MaxContentWidth) - Spacing.three * 2, 170, Spacing.three);
   const rows = toRows(sorted, columns);
   const sortLabel = LIBRARY_SORTS.find((s) => s.value === prefs.librarySort)?.label ?? '';
@@ -177,25 +182,27 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
       {searchBar}
       {filtering && sorted.length ? (
         <ThemedText type="small" themeColor="textSecondary" style={styles.results} accessibilityLiveRegion="polite">
-          {sorted.length === 1 ? '1 video' : `${sorted.length} videos`} of {items.length}
+          {sorted.length === 1 ? '1 video' : `${sorted.length} videos`} of {base.length}
         </ThemedText>
       ) : null}
     </View>
   ) : (
     <View style={styles.toolbar}>
       <ThemedText type="label" themeColor="textSecondary" style={{ flex: 1 }} numberOfLines={1}>
-        {title ? `${title}${items.length ? ` · ${items.length}` : ''}` : items.length ? `${items.length} videos` : ''}
+        {title ? `${title}${base.length ? ` · ${base.length}` : ''}` : base.length ? `${base.length} videos` : ''}
       </ThemedText>
-      <Pressable
-        onPress={() => setSortOpen(true)}
-        accessibilityRole="button"
-        accessibilityLabel={`Sort: ${sortLabel}`}
-        style={({ pressed }) => [styles.sort, { borderColor: theme.border }, pressed && { opacity: 0.7 }]}>
-        <Icon ios="arrow.up.arrow.down" md="sort" size={16} color={theme.textSecondary} />
-        <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
-          {sortLabel}
-        </ThemedText>
-      </Pressable>
+      {series ? null : (
+        <Pressable
+          onPress={() => setSortOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel={`Sort: ${sortLabel}`}
+          style={({ pressed }) => [styles.sort, { borderColor: theme.border }, pressed && { opacity: 0.7 }]}>
+          <Icon ios="arrow.up.arrow.down" md="sort" size={16} color={theme.textSecondary} />
+          <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
+            {sortLabel}
+          </ThemedText>
+        </Pressable>
+      )}
       <IconButton icon={{ ios: 'magnifyingglass', md: 'search' }} label="Search videos" onPress={() => setSearchOpen(true)} size={20} />
       <IconButton
         icon={{ ios: 'checkmark.circle', md: 'checklist' }}
@@ -222,7 +229,7 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
         keyExtractor={(row) => row[0].id}
         ListHeaderComponent={
           <View>
-            {searchOpen ? null : header}
+            {searchOpen ? null : (header ?? (series ? <NextUp episodes={base} watched={watched} /> : null))}
             {toolbar}
           </View>
         }
@@ -280,7 +287,7 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
           ) : (
             <View style={styles.empty}>
               <ThemedText themeColor="textSecondary" style={{ textAlign: 'center' }}>
-                {error ?? (filtering && items.length ? `No videos match “${deferredQuery.trim()}”.` : emptyText)}
+                {error ?? (filtering && base.length ? `No videos match “${deferredQuery.trim()}”.` : emptyText)}
               </ThemedText>
             </View>
           )
@@ -329,6 +336,23 @@ export function VideoGrid({ albumId, header, title, emptyText }: Props) {
         ))}
       </Sheet>
     </View>
+  );
+}
+
+/** Series screen: a button for the first unwatched episode. */
+function NextUp({ episodes, watched }: { episodes: VideoItem[]; watched: Record<string, number> }) {
+  if (!episodes.length) return null;
+  const next = nextEpisode(episodes, (v) => watchedIn(watched, v.id));
+  const v = next ?? episodes[0];
+  const ep = episodeFromTitle(v.title);
+  const what = ep ? episodeLabel(ep) : v.title;
+  return (
+    <Button
+      label={next ? (next === episodes[0] ? `Play ${what}` : `Continue: ${what}`) : `Watch again from ${what}`}
+      icon={{ ios: 'play.fill', md: 'play_arrow' }}
+      onPress={() => openPlayer(v)}
+      style={{ marginBottom: Spacing.three }}
+    />
   );
 }
 

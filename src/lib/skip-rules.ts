@@ -42,8 +42,8 @@ export function seriesFromTitle(title: string): string {
     // S02E05, s2 e5, 2x05, "season 2", "episode 5", "ep 5", "e05" and anything after them
     .replace(/\b(s\d{1,2} ?e\d{1,4}|\d{1,2}x\d{2,4}|season \d+|episode \d+|ep ?\d+|e\d{2,4})\b.*$/, '')
     .replace(NOISE, '')
-    // a bare episode number at the end ("jujutsu kaisen 29"), but not a year-like or single word title
-    .replace(/ \d{1,4}( v\d)?$/, '')
+    // a bare episode number at the end ("jujutsu kaisen 29"), but not a year ("blade runner 2049") or single word title
+    .replace(/ (?!(?:19|20)\d\d\b)\d{1,4}( v\d)?$/, '')
     .trim();
   return s || normalizeForSearch(title);
 }

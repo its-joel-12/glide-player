@@ -67,6 +67,7 @@ export default function RootLayout() {
         <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.background } }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="folder/[id]" />
+          <Stack.Screen name="series/[key]" />
           <Stack.Screen name="settings" />
           <Stack.Screen name="export" />
           <Stack.Screen name="seekable" />

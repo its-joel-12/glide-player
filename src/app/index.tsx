@@ -1,10 +1,11 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, IconButton } from '@/components/button';
 import { FolderRow } from '@/components/folder-row';
+import { SeriesRow } from '@/components/series-row';
 import { Segmented } from '@/components/segmented';
 import { ThemedText } from '@/components/themed-text';
 import { VideoActions } from '@/components/video-actions';
@@ -13,11 +14,13 @@ import { VideoGrid } from '@/components/video-grid';
 import { Wordmark } from '@/components/wordmark';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { checkAccess, chooseMoreVideos, fetchFolders, requestAccess, type Access, type Folder } from '@/lib/library';
+import { checkAccess, chooseMoreVideos, fetchAllVideos, fetchFolders, requestAccess, type Access, type Folder, type VideoItem } from '@/lib/library';
 import { openPlayer, pickVideoFile, type VideoRef } from '@/lib/navigation';
 import { continueWatching, progressFraction, useResumeEntries } from '@/lib/resume';
+import { groupSeries } from '@/lib/series';
+import { useWatched } from '@/lib/watched';
 
-type Tab = 'videos' | 'folders';
+type Tab = 'videos' | 'series' | 'folders';
 
 export default function LibraryScreen() {
   const theme = useTheme();
@@ -50,6 +53,7 @@ export default function LibraryScreen() {
             <Segmented
               options={[
                 { value: 'videos', label: 'Videos' },
+                { value: 'series', label: 'Series' },
                 { value: 'folders', label: 'Folders' },
               ]}
               value={tab}
@@ -64,7 +68,13 @@ export default function LibraryScreen() {
               </View>
             ) : null}
           </View>
-          {tab === 'videos' ? <VideoGrid header={<ContinueWatching />} title="All videos" emptyText="No videos on this phone yet." /> : <FolderList />}
+          {tab === 'videos' ? (
+            <VideoGrid header={<ContinueWatching />} title="All videos" emptyText="No videos on this phone yet." />
+          ) : tab === 'series' ? (
+            <SeriesList />
+          ) : (
+            <FolderList />
+          )}
         </>
       ) : access === 'unknown' ? null : (
         <AccessGate access={access} onGranted={setAccess} onOpenFile={() => void openFile()} />
@@ -100,6 +110,46 @@ function ContinueWatching() {
       </ScrollView>
       <VideoActions video={actionsFor} onClose={() => setActionsFor(null)} inContinueWatching />
     </View>
+  );
+}
+
+/** Videos grouped by series name from the file name (2+ videos with the same name, different episode numbers). */
+function SeriesList() {
+  const theme = useTheme();
+  const watched = useWatched();
+  const [items, setItems] = useState<VideoItem[] | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const series = useMemo(() => groupSeries(items ?? []), [items]);
+  const load = () =>
+    fetchAllVideos()
+      .then(setItems)
+      .catch(() => setItems([]))
+      .finally(() => setRefreshing(false));
+  useEffect(() => {
+    void load();
+  }, []);
+  return (
+    <FlatList
+      data={series}
+      keyExtractor={(s) => s.key}
+      extraData={watched}
+      contentContainerStyle={styles.folderList}
+      refreshing={refreshing}
+      onRefresh={() => {
+        setRefreshing(true);
+        void load();
+      }}
+      renderItem={({ item }) => (
+        <SeriesRow series={item} watched={watched} onPress={() => router.push({ pathname: '/series/[key]', params: { key: item.key, title: item.title } })} />
+      )}
+      ListEmptyComponent={
+        <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+          {items ? 'No series yet. Videos whose names differ only by the episode number, like “Show S01E01” and “Show S01E02”, show up here together.' : 'Looking for series…'}
+        </ThemedText>
+      }
+      ListFooterComponent={<View style={{ height: Spacing.five }} />}
+      style={{ backgroundColor: theme.background }}
+    />
   );
 }
 
