@@ -25,7 +25,13 @@ type Props = {
  * The ⋮ menu of a series: rename it, merge it into another series (when the same show has two names),
  * split off series merged into it, or ungroup it (its videos are then just videos again).
  */
-export function SeriesActions({ seriesKey, onClose, onMerged, onUngrouped }: Props) {
+export function SeriesActions(props: Props) {
+  if (!props.seriesKey) return null;
+  // Keyed by series, so opening it for another series starts again from the menu.
+  return <SeriesActionsSheet key={props.seriesKey} {...props} seriesKey={props.seriesKey} />;
+}
+
+function SeriesActionsSheet({ seriesKey, onClose, onMerged, onUngrouped }: Props & { seriesKey: string }) {
   const theme = useTheme();
   const ov = useSeriesOverrides();
   const [mode, setMode] = useState<Mode>('menu');
@@ -33,12 +39,7 @@ export function SeriesActions({ seriesKey, onClose, onMerged, onUngrouped }: Pro
   const [others, setOthers] = useState<{ key: string; title: string; count: number }[] | null>(null);
 
   useEffect(() => {
-    setMode('menu');
-    setOthers(null);
-  }, [seriesKey]);
-
-  useEffect(() => {
-    if (mode !== 'merge' || !seriesKey) return;
+    if (mode !== 'merge') return;
     let live = true;
     fetchAllVideos()
       .then((all) => {
@@ -50,7 +51,6 @@ export function SeriesActions({ seriesKey, onClose, onMerged, onUngrouped }: Pro
     };
   }, [mode, seriesKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!seriesKey) return null;
   const title = seriesName(seriesKey, ov);
   const renamed = !!ov.names[seriesKey];
   const parts = mergedInto(ov, seriesKey);
