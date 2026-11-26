@@ -33,7 +33,9 @@ import { Screen } from '@/constants/theme';
 import { containerLabel, formatFps, formatOffset, formatTime, seekTarget } from '@/lib/format';
 import { clamp } from '@/lib/gestures';
 import { openSeekableCopy, pickSubtitleFile } from '@/lib/navigation';
-import { getSidecars } from '@/lib/sidecars';
+import { getSidecars, setSidecars } from '@/lib/sidecars';
+import { keepSubtitleFile, subtitleFileExists } from '@/lib/subtitle-files';
+import { getTrackMemory, pickOf, rememberTrack, restoreChoice } from '@/lib/track-memory';
 import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResume, getResume, isFinished, saveResume, startPosition } from '@/lib/resume';
 import { setWatched } from '@/lib/watched';
@@ -67,7 +69,7 @@ export default function PlayerScreen() {
   const id = params.id || params.uri;
   const title = params.title || 'Video';
   // Subtitle files saved with this video (e.g. from a seekable copy), then any the user adds.
-  const [subtitles, setSubtitles] = useState<SubtitleSource[]>(() => getSidecars(params.uri));
+  const [subtitles, setSubtitles] = useState<SubtitleSource[]>(() => getSidecars(params.uri).filter((s) => subtitleFileExists(s.uri)));
   const startAt = useMemo(() => (prefs.resume && !params.fromStart ? startPosition(getResume(id)) : 0), [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const source = useMemo<VideoSource>(() => ({ uri: params.uri, title, startPositionMs: startAt, subtitles }), [params.uri, title, startAt, subtitles]);
 
@@ -110,6 +112,8 @@ export default function PlayerScreen() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(0);
   const toldNoSound = useRef(false);
+  // The remembered audio/subtitle pick is put back once per load (again after the video reloads).
+  const restored = useRef({ audio: false, text: false });
   const brightness = useRef<number | null>(null);
   const volume = useRef<number>(getVolume());
   const posRef = useRef(pos);
@@ -271,8 +275,13 @@ export default function PlayerScreen() {
     setSheet(null);
     const f = await pickSubtitleFile();
     if (!f) return;
-    // The file just added is the one switched on.
-    setSubtitles((s) => [...s.map((x) => ({ ...x, selected: false })), { uri: f.uri, label: f.name, selected: true }]);
+    // The file just added is the one switched on, now and next time (it's kept with the video).
+    const uri = isWeb ? f.uri : keepSubtitleFile(f.uri, f.name);
+    const next = [...subtitles.map((x) => ({ ...x, selected: false })), { uri, label: f.name, selected: true }];
+    setSubtitles(next);
+    if (!isWeb) setSidecars(params.uri, next);
+    rememberTrack(id, 'text', { label: f.name, language: '', index: -1 });
+    restored.current.text = false;
     showToast(`Added subtitles: ${f.name}`);
   };
 
@@ -396,6 +405,20 @@ export default function PlayerScreen() {
         onTracks={(e) => {
           const t = e.nativeEvent;
           setTracks(t);
+          // Put back the audio and subtitles picked last time for this video. An empty list means the
+          // video is (re)loading, e.g. after a long pause in the background: restore again after it.
+          const memory = getTrackMemory(id);
+          if (!t.audio.length && !t.text.length) restored.current = { audio: false, text: false };
+          if (!restored.current.audio && t.audio.length) {
+            restored.current.audio = true;
+            const to = restoreChoice(t.audio, memory?.audio);
+            if (to !== undefined) void ref.current?.setAudioTrack(to);
+          }
+          if (!restored.current.text && t.text.length) {
+            restored.current.text = true;
+            const to = restoreChoice(t.text, memory?.text);
+            if (to !== undefined) void ref.current?.setTextTrack(to);
+          }
           // Say why a video is silent (once), instead of leaving people to guess.
           const unplayable = t.audio.find((a) => a.unsupported);
           if (unplayable && t.audio.every((a) => a.unsupported) && !toldNoSound.current) {
@@ -626,10 +649,12 @@ export default function PlayerScreen() {
         tracks={tracks}
         onAudio={(t) => {
           void ref.current?.setAudioTrack(t?.id ?? null);
+          rememberTrack(id, 'audio', t ? pickOf(tracks.audio, t.id) : undefined);
           setSheet(null);
         }}
         onText={(t) => {
           void ref.current?.setTextTrack(t?.id ?? null);
+          rememberTrack(id, 'text', t ? pickOf(tracks.text, t.id) : 'off');
           setSheet(null);
         }}
         onLoadSubtitles={() => void loadSubtitles()}

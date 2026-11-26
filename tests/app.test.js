@@ -277,5 +277,26 @@ const same = new Set(['a']);
 eq(sel.pruneSelection(same, ['a']) === same, true, 'prune keeps the same object when nothing changed');
 eq(sel.pruneSelection(null, ['a']), null, 'prune while not selecting');
 
+// remembered audio/subtitle tracks
+const tm = require('../src/lib/track-memory-rules.ts');
+const T = (id, label, language, selected = false, unsupported) => ({ id, label, language, selected, ...(unsupported ? { unsupported } : {}) });
+const audio = [T('1:0', 'English · 5.1', 'en', true), T('2:0', 'Hindi · Stereo', 'hi'), T('3:0', 'English · Stereo', 'en')];
+eq(tm.pickOf(audio, '2:0'), { label: 'Hindi · Stereo', language: 'hi', index: 1 }, 'pick remembers name, language and place');
+eq(tm.pickOf(audio, 'x'), undefined, 'unknown id');
+eq(tm.restoreChoice(audio, { label: 'Hindi · Stereo', language: 'hi', index: 1 }), '2:0', 'puts the picked audio back');
+eq(tm.restoreChoice(audio, { label: 'English · 5.1', language: 'en', index: 0 }), undefined, 'already selected: nothing to do');
+eq(tm.restoreChoice(audio, undefined), undefined, 'nothing remembered');
+const moved = [T('0:0', 'English · 5.1', 'en', true), T('4:0', 'Hindi · Stereo', 'hi')];
+eq(tm.restoreChoice(moved, { label: 'Hindi · Stereo', language: 'hi', index: 1 }), '4:0', 'found by name when ids change');
+eq(tm.restoreChoice(audio, { label: 'English · Stereo', language: 'en', index: 2 }), '3:0', 'same name+language: the right one of two English tracks');
+eq(tm.restoreChoice([T('1:0', 'Audio 1', 'en', true), T('2:0', 'Audio 2', 'ta')], { label: 'Tamil', language: 'ta', index: 1 }), '2:0', 'falls back to language');
+eq(tm.restoreChoice([T('1:0', 'A', 'en', true), T('2:0', 'DTS', 'hi', false, 'DTS can\'t be played')], { label: 'DTS', language: 'hi', index: 1 }), undefined, 'never switches to unplayable sound');
+const subs = [T('5:0', 'English', 'en', true), T('6:0', 'movie.srt', '')];
+eq(tm.restoreChoice(subs, 'off'), null, 'subtitles switched off again');
+eq(tm.restoreChoice([T('5:0', 'English', 'en')], 'off'), undefined, 'already off');
+eq(tm.restoreChoice(subs, { label: 'movie.srt', language: '', index: -1 }), '6:0', 'added subtitle file found by name');
+eq(tm.restoreChoice([], { label: 'movie.srt', language: '', index: 0 }), undefined, 'no tracks yet');
+eq(Object.keys(tm.pruneMemory({ a: { updatedAt: 1 }, b: { updatedAt: 3 }, c: { updatedAt: 2 } }, 2)).sort(), ['b', 'c'], 'prune keeps the newest');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

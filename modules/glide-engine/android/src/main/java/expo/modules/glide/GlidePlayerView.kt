@@ -314,6 +314,15 @@ class GlidePlayerView(context: Context, appContext: AppContext) : ExpoView(conte
     currentSubtitles = subs
     loadedSent = false
     if (!sameVideo && !PlayerHolder.effectsEnabled) switchPlayer(withEffects = true)
+    // The player is shared: a track picked (or subtitles switched off) in the last video mustn't carry
+    // over. The screen puts back what was picked for this video once its tracks are known.
+    if (!sameVideo) {
+      player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+        .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+        .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+        .build()
+    }
 
     val anyChosen = source.subtitles.any { it.selected != null }
     val item = MediaItem.Builder()
