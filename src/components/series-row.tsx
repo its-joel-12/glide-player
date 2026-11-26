@@ -1,6 +1,7 @@
 import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { IconButton } from '@/components/button';
 import { Icon } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Radius } from '@/constants/theme';
@@ -11,7 +12,9 @@ import { useThumbnail } from '@/lib/thumbnails';
 import { watchedIn } from '@/lib/watched';
 
 /** One series in the Series tab: cover of the next episode, episode count, how many watched, what's next. */
-export function SeriesRow({ series, watched, onPress }: { series: Series<VideoItem>; watched: Record<string, number>; onPress: () => void }) {
+type Props = { series: Series<VideoItem>; watched: Record<string, number>; onPress: () => void; /** ⋮ menu (rename, merge, ungroup); long-press opens it too. */ onMore: () => void };
+
+export function SeriesRow({ series, watched, onPress, onMore }: Props) {
   const theme = useTheme();
   const count = series.items.length;
   const seen = series.items.filter((v) => watchedIn(watched, v.id)).length;
@@ -24,6 +27,7 @@ export function SeriesRow({ series, watched, onPress }: { series: Series<VideoIt
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onMore}
       accessibilityRole="button"
       accessibilityLabel={`${series.title}, ${info}${status ? `, ${status}` : ''}`}
       style={({ pressed }) => [styles.row, { borderColor: theme.border }, pressed && { backgroundColor: theme.backgroundElement }]}>
@@ -46,6 +50,7 @@ export function SeriesRow({ series, watched, onPress }: { series: Series<VideoIt
           </ThemedText>
         ) : null}
       </View>
+      <IconButton icon={{ ios: 'ellipsis', md: 'more_vert' }} label={`More options for ${series.title}`} onPress={onMore} size={20} />
       <Icon ios="chevron.right" md="chevron_right" size={20} color={theme.faint} />
     </Pressable>
   );

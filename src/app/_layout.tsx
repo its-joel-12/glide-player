@@ -17,6 +17,7 @@ import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { loadPreferences, usePreferences } from '@/lib/preferences';
 import { loadResume } from '@/lib/resume';
+import { loadSeriesOverrides } from '@/lib/series-store';
 import { loadSidecars } from '@/lib/sidecars';
 import { loadSkipRules } from '@/lib/skip-buttons';
 import { loadTrackMemory } from '@/lib/track-memory';
@@ -28,6 +29,7 @@ void loadResume();
 void loadSidecars();
 void loadTrackMemory();
 void loadSkipRules();
+void loadSeriesOverrides();
 void loadWatched();
 
 export default function RootLayout() {

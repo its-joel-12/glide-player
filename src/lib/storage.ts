@@ -8,6 +8,7 @@ export const StorageKeys = {
   watched: 'glide.watched.v1',
   tracks: 'glide.tracks.v1',
   skips: 'glide.skips.v1',
+  series: 'glide.series.v1',
 } as const;
 
 export async function loadJSON<T>(key: string, fallback: T): Promise<T> {

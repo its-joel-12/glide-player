@@ -21,6 +21,7 @@ import { setPreference, usePreferences } from '@/lib/preferences';
 import { clearResumeMany, progressFraction, useResumeEntries } from '@/lib/resume';
 import { pruneSelection, selectAllToggle, toggleSelected, type Selection } from '@/lib/selection';
 import { episodeFromTitle, episodeLabel, nextEpisode, videosOfSeries } from '@/lib/series';
+import { useSeriesOverrides } from '@/lib/series-store';
 import { setWatchedMany, useWatched, watchedIn } from '@/lib/watched';
 
 type Props = {
@@ -53,6 +54,7 @@ export function VideoGrid({ albumId, series, header, title, emptyText }: Props) 
   const { width } = useWindowDimensions();
   const resume = useResumeEntries();
   const watched = useWatched();
+  const seriesOv = useSeriesOverrides();
   const [items, setItems] = useState<VideoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -74,7 +76,7 @@ export function VideoGrid({ albumId, series, header, title, emptyText }: Props) 
   const words = searchOpen ? queryWords(deferredQuery) : [];
   const filtering = words.length > 0;
   /** The videos this screen is about: all of them, or one series' episodes in order. */
-  const base = useMemo(() => (series ? videosOfSeries(items, series) : items), [items, series]);
+  const base = useMemo(() => (series ? videosOfSeries(items, series, seriesOv) : items), [items, series, seriesOv]);
   const shown = filtering ? base.filter((v) => matchesWords(searchNames.get(v.id) ?? '', words)) : base;
   const sorted = series ? shown : sortVideos(shown, prefs.librarySort);
   const columns = list ? 1 : columnsFor(Math.min(width, MaxContentWidth) - Spacing.three * 2, 170, Spacing.three);

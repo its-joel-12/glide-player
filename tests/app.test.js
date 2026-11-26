@@ -356,5 +356,30 @@ eq(se.sortEpisodes([V('x', 'Show extras'), V('y', 'Show S02E01'), V('z', 'Show S
 eq(se.nextEpisode(['a', 'b', 'c'], (v) => v === 'a'), 'b', 'series: next unwatched');
 eq(se.nextEpisode(['a'], () => true), null, 'series: all watched');
 
+// series: renaming, merging, ungrouping
+let ov = se.NO_OVERRIDES;
+ov = se.renameSeries(ov, 'frieren', '  Frieren:  Beyond Journey’s End ');
+eq(se.seriesName('frieren', ov), 'Frieren: Beyond Journey’s End', 'series: renamed');
+eq(se.renameSeries(ov, 'frieren', 'Frieren').names, {}, 'series: automatic name clears rename');
+eq(se.renameSeries(ov, 'frieren', ' ').names, {}, 'series: empty name clears rename');
+const titans = [V('t1', 'Shingeki no Kyojin - 01', 1), V('t2', 'Shingeki no Kyojin - 02', 2), V('t3', 'Attack.on.Titan.S01E03', 3), V('t4', 'Attack.on.Titan.S01E04', 4)];
+eq(se.groupSeries(titans).length, 2, 'series: two names, two series');
+let m = se.mergeSeries(se.NO_OVERRIDES, 'shingeki no kyojin', 'attack on titan');
+eq(se.groupSeries(titans, m).map((x) => `${x.title}:${x.items.map((v) => v.id).join('')}`), ['Attack on Titan:t1t2t3t4'], 'series: merged into one');
+eq(se.mergeSeries(m, 'attack on titan', 'shingeki no kyojin'), m, 'series: merge loop ignored');
+m = se.mergeSeries(m, 'aot', 'shingeki no kyojin');
+eq(m.merged.aot, 'attack on titan', 'series: merge follows to the final series');
+eq(se.mergedInto(m, 'attack on titan'), ['aot', 'shingeki no kyojin'], 'series: merged-in list');
+eq(se.groupSeries(titans, se.unmergeSeries(m, 'shingeki no kyojin')).length, 2, 'series: split off again');
+eq(se.resolveKey('a', { names: {}, merged: { a: 'b', b: 'a' }, ungrouped: [] }) !== undefined, true, 'series: broken loop in saved data stops');
+const ug = se.setUngrouped(se.NO_OVERRIDES, 'frieren', true);
+eq(se.groupSeries(shows, ug).map((x) => x.key), ['jujutsu kaisen'], 'series: ungrouped left out');
+eq(se.setUngrouped(ug, 'frieren', false).ungrouped, [], 'series: grouped again');
+eq(se.normalizeOverrides({ names: { a: 'A', b: 3 }, merged: [], ungrouped: ['x', 'x', 2] }), { names: { a: 'A' }, merged: {}, ungrouped: ['x'] }, 'series: saved overrides cleaned');
+eq(se.normalizeOverrides(null), { names: {}, merged: {}, ungrouped: [] }, 'series: junk overrides');
+const cwList = [{ id: 1, title: 'Frieren 05' }, { id: 2, title: 'Holiday clip' }, { id: 3, title: 'Frieren 04' }, { id: 4, title: 'Jujutsu Kaisen - 3' }];
+eq(se.oneCardPerSeries(cwList).map((v) => v.id), [1, 2, 4], 'series: one continue-watching card per series');
+eq(se.oneCardPerSeries(cwList, ug).map((v) => v.id), [1, 2, 3, 4], 'series: ungrouped series keeps every card');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

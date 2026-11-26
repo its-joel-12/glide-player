@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button, IconButton } from '@/components/button';
 import { FolderRow } from '@/components/folder-row';
+import { SeriesActions } from '@/components/series-actions';
 import { SeriesRow } from '@/components/series-row';
 import { Segmented } from '@/components/segmented';
 import { ThemedText } from '@/components/themed-text';
@@ -17,7 +18,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { checkAccess, chooseMoreVideos, fetchAllVideos, fetchFolders, requestAccess, type Access, type Folder, type VideoItem } from '@/lib/library';
 import { openPlayer, pickVideoFile, type VideoRef } from '@/lib/navigation';
 import { continueWatching, progressFraction, useResumeEntries } from '@/lib/resume';
-import { groupSeries } from '@/lib/series';
+import { groupSeries, oneCardPerSeries, seriesName } from '@/lib/series';
+import { ungroupSeries, useSeriesOverrides } from '@/lib/series-store';
 import { useWatched } from '@/lib/watched';
 
 type Tab = 'videos' | 'series' | 'folders';
@@ -85,7 +87,9 @@ export default function LibraryScreen() {
 
 function ContinueWatching() {
   const entries = useResumeEntries();
-  const list = continueWatching(entries);
+  const ov = useSeriesOverrides();
+  // One card per series: the episode watched most recently.
+  const list = oneCardPerSeries(continueWatching(entries, Infinity), ov).slice(0, 12);
   const [actionsFor, setActionsFor] = useState<VideoRef | null>(null);
   if (!list.length) return actionsFor ? <VideoActions video={actionsFor} onClose={() => setActionsFor(null)} inContinueWatching /> : null;
   return (
@@ -117,9 +121,11 @@ function ContinueWatching() {
 function SeriesList() {
   const theme = useTheme();
   const watched = useWatched();
+  const ov = useSeriesOverrides();
   const [items, setItems] = useState<VideoItem[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const series = useMemo(() => groupSeries(items ?? []), [items]);
+  const [actionsFor, setActionsFor] = useState<string | null>(null);
+  const series = useMemo(() => groupSeries(items ?? [], ov), [items, ov]);
   const load = () =>
     fetchAllVideos()
       .then(setItems)
@@ -129,27 +135,53 @@ function SeriesList() {
     void load();
   }, []);
   return (
-    <FlatList
-      data={series}
-      keyExtractor={(s) => s.key}
-      extraData={watched}
-      contentContainerStyle={styles.folderList}
-      refreshing={refreshing}
-      onRefresh={() => {
-        setRefreshing(true);
-        void load();
-      }}
-      renderItem={({ item }) => (
-        <SeriesRow series={item} watched={watched} onPress={() => router.push({ pathname: '/series/[key]', params: { key: item.key, title: item.title } })} />
-      )}
-      ListEmptyComponent={
-        <ThemedText themeColor="textSecondary" style={styles.emptyText}>
-          {items ? 'No series yet. Videos whose names differ only by the episode number, like “Show S01E01” and “Show S01E02”, show up here together.' : 'Looking for series…'}
-        </ThemedText>
-      }
-      ListFooterComponent={<View style={{ height: Spacing.five }} />}
-      style={{ backgroundColor: theme.background }}
-    />
+    <>
+      <FlatList
+        data={series}
+        keyExtractor={(s) => s.key}
+        extraData={watched}
+        contentContainerStyle={styles.folderList}
+        refreshing={refreshing}
+        onRefresh={() => {
+          setRefreshing(true);
+          void load();
+        }}
+        renderItem={({ item }) => (
+          <SeriesRow
+            series={item}
+            watched={watched}
+            onPress={() => router.push({ pathname: '/series/[key]', params: { key: item.key } })}
+            onMore={() => setActionsFor(item.key)}
+          />
+        )}
+        ListEmptyComponent={
+          <ThemedText themeColor="textSecondary" style={styles.emptyText}>
+            {items ? 'No series yet. Videos whose names differ only by the episode number, like “Show S01E01” and “Show S01E02”, show up here together.' : 'Looking for series…'}
+          </ThemedText>
+        }
+        ListFooterComponent={
+          <View style={{ paddingBottom: Spacing.five }}>
+            {ov.ungrouped.length ? (
+              <View style={styles.ungrouped}>
+                <ThemedText type="label" themeColor="textSecondary" style={styles.sectionLabel}>
+                  Ungrouped
+                </ThemedText>
+                {ov.ungrouped.map((k) => (
+                  <View key={k} style={styles.ungroupedRow}>
+                    <ThemedText numberOfLines={1} style={{ flex: 1 }}>
+                      {seriesName(k, ov)}
+                    </ThemedText>
+                    <Button label="Group again" variant="ghost" onPress={() => ungroupSeries(k, false)} />
+                  </View>
+                ))}
+              </View>
+            ) : null}
+          </View>
+        }
+        style={{ backgroundColor: theme.background }}
+      />
+      <SeriesActions seriesKey={actionsFor} onClose={() => setActionsFor(null)} />
+    </>
   );
 }
 
@@ -225,5 +257,7 @@ const styles = StyleSheet.create({
   sectionLabel: { marginBottom: Spacing.one },
   folderList: { paddingHorizontal: Spacing.three, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   emptyText: { textAlign: 'center', marginTop: Spacing.five },
+  ungrouped: { marginTop: Spacing.four },
+  ungroupedRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   gate: { padding: Spacing.four, gap: Spacing.three, maxWidth: 520, alignSelf: 'center', marginTop: Spacing.five },
 });
