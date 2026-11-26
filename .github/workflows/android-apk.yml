@@ -5,6 +5,10 @@
 # `npm run ci:secrets` (see README → "Builds on GitHub"):
 #   KEYSTORE_BASE64    the keystore file (credentials/android/keystore.jks), base64-encoded
 #   KEYSTORE_PASSWORD  KEY_ALIAS  KEY_PASSWORD   from credentials.json
+# Optional, for an email when the build finishes (skipped if MAIL_USERNAME is not set):
+#   MAIL_USERNAME  the Gmail address that sends it
+#   MAIL_PASSWORD  a Gmail app password for it (myaccount.google.com/apppasswords), not the normal password
+#   MAIL_TO        who gets it (defaults to MAIL_USERNAME)
 name: Android APK
 
 on:
@@ -94,6 +98,7 @@ jobs:
           retention-days: 14
 
       - name: Publish as a release (keeps the last 10)
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           NOTES: ${{ github.event.head_commit.message || 'Built from the Actions tab' }}
@@ -101,6 +106,7 @@ jobs:
         run: |
           tag="build-${{ github.run_number }}"
           gh release create "$tag" "$APK" --title "Glide build ${{ github.run_number }}" --notes "$NOTES" --target "${{ github.sha }}"
+          echo "url=${{ github.server_url }}/${{ github.repository }}/releases/tag/$tag" >> "$GITHUB_OUTPUT"
           gh release list --limit 100 --json tagName --jq '.[10:][].tagName' | while read -r old; do
             gh release delete "$old" --cleanup-tag --yes
           done
@@ -108,3 +114,31 @@ jobs:
       - name: Remove the signing key
         if: always()
         run: rm -f credentials.json credentials/android/keystore.jks
+
+      # Emails when the build succeeds or fails (not when a newer push cancels it). Plain curl over SMTP.
+      - name: Email the result
+        if: success() || failure()
+        env:
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+          STATUS: ${{ job.status }}
+          RELEASE_URL: ${{ steps.release.outputs.url }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT: ${{ github.event.head_commit.message || 'Built from the Actions tab' }}
+        run: |
+          if [ -z "$MAIL_USERNAME" ] || [ -z "$MAIL_PASSWORD" ]; then echo "MAIL_USERNAME/MAIL_PASSWORD not set, no email"; exit 0; fi
+          to="${MAIL_TO:-$MAIL_USERNAME}"
+          if [ "$STATUS" = "success" ]; then
+            subject="Glide build ${{ github.run_number }}: APK ready"
+            body="The APK is ready to download: $RELEASE_URL"
+          else
+            subject="Glide build ${{ github.run_number }} failed"
+            body="The build failed. Log: $RUN_URL"
+          fi
+          {
+            printf 'From: Glide CI <%s>\r\nTo: %s\r\nSubject: %s\r\nContent-Type: text/plain; charset=utf-8\r\n\r\n' "$MAIL_USERNAME" "$to" "$subject"
+            printf '%s\n\nCommit: %s\n%s\n\nRun: %s\n' "$body" "${COMMIT%%$'\n'*}" "${{ github.sha }}" "$RUN_URL"
+          } > mail.txt
+          curl --silent --show-error --ssl-reqd --url "smtps://smtp.gmail.com:465" \
+            --user "$MAIL_USERNAME:$MAIL_PASSWORD" --mail-from "$MAIL_USERNAME" --mail-rcpt "$to" --upload-file mail.txt

@@ -163,7 +163,11 @@ One-time setup:
 2. Put it into the repo's secrets: `npm run ci:secrets` (uses the GitHub CLI, `gh auth login` first), or
    `npm run ci:secrets -- --print` and add the four values under **Settings → Secrets and variables →
    Actions**.
-3. Push to `main`.
+3. Optional, an email when each build finishes (with the download link, or the log if it failed): add
+   the secrets `MAIL_USERNAME` (your Gmail address), `MAIL_PASSWORD` (a Gmail
+   [app password](https://myaccount.google.com/apppasswords), needs 2-Step Verification) and, to send
+   it somewhere else, `MAIL_TO`. Without them the build just skips the email.
+4. Push to `main`.
 
 ## Tips
 
