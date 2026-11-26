@@ -8,9 +8,11 @@ import { JetBrainsMono_400Regular } from '@expo-google-fonts/jetbrains-mono/400R
 import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Medium';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { Colors } from '@/constants/theme';
@@ -24,6 +26,10 @@ import { loadTrackMemory } from '@/lib/track-memory';
 import { loadWatched } from '@/lib/watched';
 
 void SplashScreen.preventAutoHideAsync();
+// Android keeps the last orientation the app asked for, even after it closed the app in the background:
+// without this the library would open in landscape when the app was left in a landscape video.
+// (The player sets its own orientation after this.)
+if (Platform.OS !== 'web') void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
 void loadPreferences();
 void loadResume();
 void loadSidecars();

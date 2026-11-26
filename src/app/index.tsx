@@ -17,9 +17,11 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { checkAccess, chooseMoreVideos, fetchAllVideos, fetchFolders, requestAccess, type Access, type Folder, type VideoItem } from '@/lib/library';
 import { openPlayer, pickVideoFile, type VideoRef } from '@/lib/navigation';
-import { continueWatching, progressFraction, useResumeEntries } from '@/lib/resume';
+import { takeOpenVideo } from '@/lib/open-video';
+import { continueWatching, loadResume, progressFraction, useResumeEntries } from '@/lib/resume';
 import { groupSeries, oneCardPerSeries, seriesName } from '@/lib/series';
 import { ungroupSeries, useSeriesOverrides } from '@/lib/series-store';
+import { loadSidecars } from '@/lib/sidecars';
 import { useWatched } from '@/lib/watched';
 
 type Tab = 'videos' | 'series' | 'folders';
@@ -32,6 +34,17 @@ export default function LibraryScreen() {
 
   useEffect(() => {
     void checkAccess().then(setAccess);
+  }, []);
+
+  // Android closed the app while a video was open: open it again where it was left (paused).
+  // The player reads the saved position and subtitle files when it opens, so wait for them.
+  useEffect(() => {
+    void (async () => {
+      const v = await takeOpenVideo();
+      if (!v) return;
+      await Promise.all([loadResume(), loadSidecars()]);
+      openPlayer(v, { paused: true });
+    })();
   }, []);
 
   const openFile = async () => {

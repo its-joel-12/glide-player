@@ -116,6 +116,13 @@ eq(f.containerLabel(''), '', 'no container');
 eq(r.startPosition({ positionMs: 6_000_000, durationMs: 8_400_000, updatedAt: 0, title: '', uri: '' }), 5_998_000, 'resume works for a 2h20m video');
 
 // subtitle files saved with a seekable copy are found whichever way the gallery names it
+// open video (reopened after Android closes the app in the background)
+const openv = require('../src/lib/open-video-rules.ts');
+eq(openv.openVideoFrom(null), null, 'open video: nothing saved');
+eq(openv.openVideoFrom({ title: 'x' }), null, 'open video: no address');
+eq(openv.openVideoFrom({ id: 'a', uri: 'content://v/1', title: 'Ep 1', width: 1920, height: 1080, durationMs: 1.5e6 }), { id: 'a', uri: 'content://v/1', title: 'Ep 1', width: 1920, height: 1080, durationMs: 1500000 }, 'open video: kept');
+eq(openv.openVideoFrom({ uri: 'file:///x.mkv', width: 0, height: 'big' }), { id: 'file:///x.mkv', uri: 'file:///x.mkv', title: 'Video' }, 'open video: defaults');
+
 const mk = require('../src/lib/media-key.ts');
 eq(mk.sidecarKey('content://media/external_primary/video/media/42'), 'media:42', 'gallery uri → id key');
 eq(mk.sidecarKey('content://media/external/video/media/42'), 'media:42', 'same video, other volume name');

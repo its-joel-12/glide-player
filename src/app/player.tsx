@@ -39,6 +39,7 @@ import { useSkipRules } from '@/lib/skip-buttons';
 import { findRule, type SkipButton } from '@/lib/skip-rules';
 import { getTrackMemory, pickOf, rememberTrack, restoreChoice } from '@/lib/track-memory';
 import { setPreference, usePreferences } from '@/lib/preferences';
+import { forgetOpenVideo, rememberOpenVideo } from '@/lib/open-video';
 import { clearResume, getResume, isFinished, saveResume, startPosition } from '@/lib/resume';
 import { setWatched } from '@/lib/watched';
 import { AUDIO_DELAY_RANGE, DELAY_STEP_MS, formatDelay, SUBTITLE_DELAY_RANGE, WEB_MIN_AUDIO_DELAY_MS, type SmoothingMode } from '@/lib/settings-schema';
@@ -62,7 +63,7 @@ const RESIZE: ResizeMode[] = ['fit', 'zoom', 'fill'];
 const RESIZE_LABEL: Record<ResizeMode, string> = { fit: 'Fit', zoom: 'Fill screen (crop)', fill: 'Stretch' };
 
 export default function PlayerScreen() {
-  const params = useLocalSearchParams<{ id: string; uri: string; title?: string; w?: string; h?: string; d?: string; fromStart?: string }>();
+  const params = useLocalSearchParams<{ id: string; uri: string; title?: string; w?: string; h?: string; d?: string; fromStart?: string; paused?: string }>();
   const prefs = usePreferences();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
@@ -75,7 +76,8 @@ export default function PlayerScreen() {
   const startAt = useMemo(() => (prefs.resume && !params.fromStart ? startPosition(getResume(id)) : 0), [id]); // eslint-disable-line react-hooks/exhaustive-deps
   const source = useMemo<VideoSource>(() => ({ uri: params.uri, title, startPositionMs: startAt, subtitles }), [params.uri, title, startAt, subtitles]);
 
-  const [paused, setPaused] = useState(false);
+  // Reopened after Android closed the app: wait for a tap instead of starting with sound.
+  const [paused, setPaused] = useState(params.paused === '1');
   const [ended, setEnded] = useState(false);
   const [buffering, setBuffering] = useState(true);
   const [rate, setRate] = useState(1);
@@ -116,6 +118,7 @@ export default function PlayerScreen() {
   const hudTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSaved = useRef(0);
+  const rememberedOpen = useRef(false);
   const toldNoSound = useRef(false);
   // The remembered audio/subtitle pick is put back once per load (again after the video reloads).
   const restored = useRef({ audio: false, text: false });
@@ -163,6 +166,7 @@ export default function PlayerScreen() {
         void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP).catch(() => {});
         void Brightness.restoreSystemBrightnessAsync().catch(() => {});
       }
+      forgetOpenVideo();
       const p = posRef.current;
       if (p.durationMs > 0 && p.seekable) saveResume(id, { positionMs: p.positionMs, durationMs: p.durationMs, title, uri: params.uri });
       [hudTimer, toastTimer].forEach((t) => t.current && clearTimeout(t.current));
@@ -199,6 +203,13 @@ export default function PlayerScreen() {
     setPos({ positionMs: ev.positionMs, durationMs, bufferedMs: ev.bufferedMs, seekable });
     // Into the credits counts as watched (a tick in the library).
     if (isFinished(ev.positionMs, durationMs)) setWatched(id, true);
+    // Once it plays, remember it's open, so it opens again if Android closes the app in the background.
+    if (!rememberedOpen.current && durationMs > 0) {
+      rememberedOpen.current = true;
+      const w = info?.width || Number(params.w) || 0;
+      const h = info?.height || Number(params.h) || 0;
+      rememberOpenVideo({ id, uri: params.uri, title, width: w, height: h, durationMs });
+    }
     if (seekable && Date.now() - lastSaved.current > 5000 && durationMs > 0) {
       lastSaved.current = Date.now();
       saveResume(id, { positionMs: ev.positionMs, durationMs, title, uri: params.uri });

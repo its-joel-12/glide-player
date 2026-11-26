@@ -9,6 +9,7 @@ export const StorageKeys = {
   tracks: 'glide.tracks.v1',
   skips: 'glide.skips.v1',
   series: 'glide.series.v1',
+  openVideo: 'glide.openVideo.v1',
 } as const;
 
 export async function loadJSON<T>(key: string, fallback: T): Promise<T> {
