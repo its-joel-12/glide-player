@@ -31,6 +31,8 @@ import expo.modules.glide.upscale.NeuralPlan
 import expo.modules.glide.upscale.NeuralUpscaleEffect
 import expo.modules.kotlin.Promise
 import java.io.File
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 /**
  * Also makes seekable copies (see [ExportOptions.remux]).
@@ -40,7 +42,12 @@ import java.io.File
  * analysis, and isn't limited to real time. Must be used on the main thread.
  */
 @OptIn(UnstableApi::class)
-internal class SmoothExporter(private val context: Context, private val onProgress: (Int) -> Unit) {
+internal class SmoothExporter(
+  private val context: Context,
+  private val onProgress: (Int) -> Unit,
+  /** A seekable copy found damaged data at this time (ms); answer with [answerDamaged]. */
+  private val onDamaged: (positionMs: Long) -> Unit,
+) {
   private var transformer: Transformer? = null
   private var remuxer: Remuxer? = null
   private var promise: Promise? = null
@@ -49,6 +56,8 @@ internal class SmoothExporter(private val context: Context, private val onProgre
   /** Seekable copies can be as big as a whole film: don't keep a second copy in the cache. */
   private var dropCacheCopy = false
   private val handler = Handler(Looper.getMainLooper())
+  /** The user's answer to "the file is damaged, continue?" (true = skip damaged parts). */
+  private val damagedAnswers = LinkedBlockingQueue<Boolean>()
   private val progress = ProgressHolder()
   /** AI upscaling: whether the network ran on the GPU (null = not used / not started). Set on the GL thread. */
   @Volatile private var aiOnGpu: Boolean? = null
@@ -167,7 +176,22 @@ internal class SmoothExporter(private val context: Context, private val onProgre
     dropCacheCopy = true
     val out = outputFile(displayName)
     val subtitleBase = "${System.currentTimeMillis()}-${displayName.removeSuffix(".mp4")}"
-    val r = Remuxer(context, uri, out, File(context.filesDir, "subtitles"), subtitleBase, opts.keepAudio) { p -> handler.post { onProgress(p) } } // called on the worker thread
+    damagedAnswers.clear()
+    lateinit var r: Remuxer
+    r = Remuxer(
+      context, uri, out, File(context.filesDir, "subtitles"), subtitleBase, opts.keepAudio,
+      onProgress = { p -> handler.post { onProgress(p) } }, // called on the worker thread
+      onDamaged = { timeUs ->
+        // Ask the user and wait on the worker thread (Cancel also ends the wait).
+        handler.post { onDamaged(timeUs / 1000) }
+        var answer: Boolean? = null
+        while (answer == null) {
+          if (r.cancelled) throw RemuxCancelled()
+          answer = damagedAnswers.poll(250, TimeUnit.MILLISECONDS)
+        }
+        answer == true
+      },
+    )
     remuxer = r
     this.promise = promise
     this.output = out
@@ -193,6 +217,7 @@ internal class SmoothExporter(private val context: Context, private val onProgre
           this.promise = null
           this.output = null
           if (e is RemuxCancelled) promise.reject("CANCELLED", "Saving was cancelled.", null)
+          else if (e is DamagedFileException) promise.reject("DAMAGED", e.message ?: "The file is damaged.", null)
           else promise.reject("EXPORT_FAILED", e.message ?: e.javaClass.simpleName, e)
         }
       }
@@ -318,6 +343,11 @@ internal class SmoothExporter(private val context: Context, private val onProgre
       finish()
       p?.reject("EXPORT_FAILED", exportException.message ?: exportException.errorCodeName, exportException)
     }
+  }
+
+  /** The user's answer after [onDamaged]: true = skip the damaged parts and go on. */
+  fun answerDamaged(keepGoing: Boolean) {
+    damagedAnswers.offer(keepGoing)
   }
 
   fun cancel() {

@@ -2,7 +2,7 @@ import { NativeModule, requireOptionalNativeModule } from 'expo';
 
 import type { DisplayInfo, ExportOptions, ExportResult } from './GlideEngine.types';
 
-type Events = { onExportProgress: (e: { progress: number }) => void };
+type Events = { onExportProgress: (e: { progress: number }) => void; onExportDamaged: (e: { positionMs: number }) => void };
 
 declare class GlideEngineNative extends NativeModule<Events> {
   getDisplayInfo(): DisplayInfo;
@@ -10,6 +10,8 @@ declare class GlideEngineNative extends NativeModule<Events> {
   setVolume(fraction: number): number;
   exportSmooth(options: ExportOptions): Promise<ExportResult>;
   cancelExport(): Promise<void>;
+  /** Missing in development builds made before damaged-file handling. */
+  answerExportDamaged?(keepGoing: boolean): Promise<void>;
   shareVideo(uri: string, title: string): Promise<void>;
   /** Missing in development builds made before multi-select. */
   shareVideos?(uris: string[], title: string): Promise<void>;
@@ -62,4 +64,19 @@ export function addExportProgressListener(listener: (progress: number) => void):
   if (!native) return () => {};
   const sub = native.addListener('onExportProgress', (e) => listener(e.progress));
   return () => sub.remove();
+}
+
+/**
+ * A seekable copy found damaged data (e.g. a download that didn't finish) at this point of the
+ * video. Copying waits until answerExportDamaged() is called. Returns an unsubscribe function.
+ */
+export function addExportDamagedListener(listener: (positionMs: number) => void): () => void {
+  if (!native) return () => {};
+  const sub = native.addListener('onExportDamaged', (e) => listener(e.positionMs));
+  return () => sub.remove();
+}
+
+/** true = skip the damaged parts and go on; false = stop (the copy fails with code DAMAGED). */
+export function answerExportDamaged(keepGoing: boolean): Promise<void> {
+  return native?.answerExportDamaged?.(keepGoing) ?? Promise.resolve();
 }

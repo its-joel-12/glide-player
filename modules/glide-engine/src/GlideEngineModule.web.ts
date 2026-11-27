@@ -66,3 +66,11 @@ export function cancelExport(): Promise<void> {
 export function addExportProgressListener(_listener: (progress: number) => void): () => void {
   return () => {};
 }
+
+export function addExportDamagedListener(_listener: (positionMs: number) => void): () => void {
+  return () => {};
+}
+
+export function answerExportDamaged(_keepGoing: boolean): Promise<void> {
+  return Promise.resolve();
+}

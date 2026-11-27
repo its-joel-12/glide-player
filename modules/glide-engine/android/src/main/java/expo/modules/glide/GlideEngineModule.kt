@@ -24,7 +24,7 @@ class GlideEngineModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("GlideEngine")
 
-    Events("onExportProgress")
+    Events("onExportProgress", "onExportDamaged")
 
     Function("getDisplayInfo") {
       val activity = appContext.currentActivity
@@ -48,9 +48,11 @@ class GlideEngineModule : Module() {
     }
 
     AsyncFunction("exportSmooth") { options: ExportOptions, promise: Promise ->
-      val ex = exporter ?: SmoothExporter(context) { p ->
-        sendEvent("onExportProgress", mapOf("progress" to p))
-      }.also { exporter = it }
+      val ex = exporter ?: SmoothExporter(
+        context,
+        onProgress = { p -> sendEvent("onExportProgress", mapOf("progress" to p)) },
+        onDamaged = { ms -> sendEvent("onExportDamaged", mapOf("positionMs" to ms.toDouble())) },
+      ).also { exporter = it }
       ex.start(options, promise)
     }.runOnQueue(Queues.MAIN)
 
@@ -83,6 +85,10 @@ class GlideEngineModule : Module() {
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
       }
       activity.startActivity(Intent.createChooser(send, title).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("answerExportDamaged") { keepGoing: Boolean ->
+      exporter?.answerDamaged(keepGoing)
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("cancelExport") {

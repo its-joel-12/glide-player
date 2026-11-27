@@ -1,6 +1,14 @@
 import { useKeepAwake } from 'expo-keep-awake';
 import { router, useLocalSearchParams } from 'expo-router';
-import { addExportProgressListener, cancelExport, exportSmooth, isEngineAvailable, type ExportResult } from 'glide-engine';
+import {
+  addExportDamagedListener,
+  addExportProgressListener,
+  answerExportDamaged,
+  cancelExport,
+  exportSmooth,
+  isEngineAvailable,
+  type ExportResult,
+} from 'glide-engine';
 import { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, Switch, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,11 +18,18 @@ import { ThemedText } from '@/components/themed-text';
 import { VideoCard } from '@/components/video-card';
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, formatTime } from '@/lib/format';
 import { openPlayer } from '@/lib/navigation';
 import { setSidecars } from '@/lib/sidecars';
 
-type Phase = { state: 'setup' } | { state: 'running'; progress: number } | { state: 'done'; result: ExportResult } | { state: 'error'; message: string };
+type Phase =
+  | { state: 'setup' }
+  | { state: 'running'; progress: number }
+  // Copying is waiting: the file is damaged here; skip the damaged parts or stop?
+  | { state: 'damaged'; positionMs: number; progress: number }
+  | { state: 'done'; result: ExportResult }
+  // damaged: the file itself is the problem (not the sound format).
+  | { state: 'error'; message: string; damaged?: boolean };
 
 function KeepAwake() {
   useKeepAwake('glide-seekable');
@@ -40,6 +55,13 @@ export default function SeekableCopyScreen() {
 
   useEffect(() => addExportProgressListener((p) => setPhase((ph) => (ph.state === 'running' ? { state: 'running', progress: p } : ph))), []);
   useEffect(
+    () =>
+      addExportDamagedListener((positionMs) =>
+        setPhase((ph) => (ph.state === 'running' ? { state: 'damaged', positionMs, progress: ph.progress } : ph)),
+      ),
+    [],
+  );
+  useEffect(
     () => () => {
       if (running.current) void cancelExport();
     },
@@ -59,10 +81,16 @@ export default function SeekableCopyScreen() {
       setPhase({ state: 'done', result });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      setPhase(/cancel/i.test(message) ? { state: 'setup' } : { state: 'error', message });
+      const damaged = (e as { code?: string } | null)?.code === 'DAMAGED';
+      setPhase(!damaged && /cancel/i.test(message) ? { state: 'setup' } : { state: 'error', message, damaged });
     } finally {
       running.current = false;
     }
+  };
+
+  const answerDamaged = (keepGoing: boolean) => {
+    setPhase((ph) => (ph.state === 'damaged' ? { state: 'running', progress: ph.progress } : ph));
+    void answerExportDamaged(keepGoing);
   };
 
   const playCopy = (r: ExportResult) => {
@@ -73,7 +101,7 @@ export default function SeekableCopyScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top, backgroundColor: theme.background }]}>
-      {phase.state === 'running' ? <KeepAwake /> : null}
+      {phase.state === 'running' || phase.state === 'damaged' ? <KeepAwake /> : null}
       <View style={styles.header}>
         <IconButton icon={{ ios: 'chevron.left', md: 'arrow_back' }} label="Back" onPress={() => router.back()} />
         <ThemedText type="subtitle" accessibilityRole="header">
@@ -114,11 +142,25 @@ export default function SeekableCopyScreen() {
             {phase.state === 'error' ? (
               <ThemedText themeColor="danger">
                 Couldn’t make the copy: {phase.message}
-                {keepAudio ? ' If the sound format is the problem (e.g. DTS), try again with the sound off.' : ''}
+                {keepAudio && !phase.damaged ? ' If the sound format is the problem (e.g. DTS), try again with the sound off.' : ''}
               </ThemedText>
             ) : null}
             <Button label="Make seekable copy" icon={{ ios: 'square.and.arrow.down', md: 'download' }} onPress={() => void start()} />
           </>
+        ) : phase.state === 'damaged' ? (
+          <View style={styles.progressBox}>
+            <ThemedText type="subtitle">The file is damaged at {formatTime(phase.positionMs)}</ThemedText>
+            <ThemedText>
+              Part of the original is missing or unreadable there, usually because the download didn’t finish. Glide can skip the damaged
+              parts and keep copying: the copy will jump past them, so some picture and sound there will be missing.
+            </ThemedText>
+            <ThemedText themeColor="textSecondary">
+              Copied so far: {phase.progress}%. Any other damaged parts further on are skipped too, and listed when the copy is done. Downloading
+              the file again is the only way to get the missing parts back.
+            </ThemedText>
+            <Button label="Skip damaged parts and continue" icon={{ ios: 'forward.fill', md: 'fast_forward' }} onPress={() => answerDamaged(true)} />
+            <Button label="Stop" variant="secondary" onPress={() => answerDamaged(false)} />
+          </View>
         ) : phase.state === 'running' ? (
           <View style={styles.progressBox}>
             <ThemedText type="subtitle">{phase.progress > 0 ? `Copying… ${phase.progress}%` : 'Copying…'}</ThemedText>

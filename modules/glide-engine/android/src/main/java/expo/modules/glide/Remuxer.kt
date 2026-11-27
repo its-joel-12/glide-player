@@ -12,6 +12,7 @@ import androidx.media3.common.C
 import androidx.media3.common.DataReader
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.ParserException
 import androidx.media3.common.util.MediaFormatUtil
 import androidx.media3.common.util.ParsableByteArray
 import androidx.media3.common.util.UnstableApi
@@ -26,6 +27,7 @@ import androidx.media3.extractor.ExtractorOutput
 import androidx.media3.extractor.PositionHolder
 import androidx.media3.extractor.SeekMap
 import androidx.media3.extractor.TrackOutput
+import androidx.media3.extractor.mkv.MatroskaExtractor
 import androidx.media3.muxer.BufferInfo
 import androidx.media3.muxer.Mp4Muxer
 import androidx.media3.muxer.SeekableMuxerOutput
@@ -41,6 +43,27 @@ import kotlin.math.roundToInt
 internal class UnsupportedVideoException(mime: String?) : Exception("Video format ${mime ?: "unknown"} can't be copied into MP4")
 
 internal class RemuxCancelled : Exception("Saving was cancelled.")
+
+/**
+ * The file is damaged (or not fully downloaded) at [timeUs]: the data there isn't valid. [canSkip]:
+ * Glide could jump past it (MKV only); false when it can't or the user chose to stop.
+ */
+internal class DamagedFileException(val timeUs: Long, val canSkip: Boolean) : Exception(
+  if (canSkip) "you stopped it because the file is damaged at ${formatTimeUs(timeUs)}."
+  else "The file is damaged or incomplete at ${formatTimeUs(timeUs)} (often a download that didn’t finish), so Glide can’t read past that point. Downloading it again should fix it."
+)
+
+/** 1:02:05 / 4:07 */
+internal fun formatTimeUs(us: Long): String {
+  val total = (us.coerceAtLeast(0) / 1_000_000)
+  val h = total / 3600
+  val m = (total / 60) % 60
+  val sec = total % 60
+  return if (h > 0) "%d:%02d:%02d".format(Locale.US, h, m, sec) else "%d:%02d".format(Locale.US, m, sec)
+}
+
+/** MKV Cluster element ID: each cluster is a self-contained run of samples with its own timestamp. */
+private const val MKV_CLUSTER_ID = 0x1F43B675
 
 /** A subtitle file written next to the copy (in the app's storage), for the player to load with it. */
 internal data class SidecarSubtitle(val file: File, val mimeType: String, val label: String, val language: String?, val selected: Boolean)
@@ -69,6 +92,11 @@ internal class Remuxer(
   private val subtitleBaseName: String,
   private val keepAudio: Boolean,
   private val onProgress: (Int) -> Unit,
+  /**
+   * Called (on the worker thread) the first time the file turns out to be damaged, with the time
+   * where it happens. Blocks until the user answers: true = skip damaged parts and go on.
+   */
+  private val onDamaged: (timeUs: Long) -> Boolean,
 ) {
   @Volatile var cancelled = false
 
@@ -76,6 +104,14 @@ internal class Remuxer(
   private val tracks = ArrayList<Out>()
   private val notes = ArrayList<String>()
   private var videoTaken = false
+
+  /** Latest sample time read so far, to say where the file is damaged. */
+  private var lastTimeUs = 0L
+  /** The user agreed to skip damaged parts. */
+  private var skipDamage = false
+  /** Start of the part being skipped (until the next sample arrives), or C.TIME_UNSET. */
+  private var gapStartUs = C.TIME_UNSET
+  private val gaps = ArrayList<Pair<Long, Long>>()
 
   fun run(): RemuxResult {
     val dataSource = DefaultDataSource(context, /* allowCrossProtocolRedirects= */ false)
@@ -91,9 +127,31 @@ internal class Remuxer(
       ex.init(Output())
       val position = PositionHolder()
       var lastPercent = -1
+      var lastResync = -1L
       while (true) {
         if (cancelled) throw RemuxCancelled()
-        val result = ex.read(input, position)
+        val result = try {
+          ex.read(input, position)
+        } catch (e: ParserException) {
+          // Invalid data (e.g. a run of zero bytes where a download never filled in a piece).
+          if (ex !is MatroskaExtractor) throw DamagedFileException(lastTimeUs, canSkip = false)
+          if (!skipDamage) {
+            if (!onDamaged(lastTimeUs)) throw DamagedFileException(lastTimeUs, canSkip = true)
+            skipDamage = true
+          }
+          if (gapStartUs == C.TIME_UNSET) gapStartUs = lastTimeUs
+          tracks.forEach { it.discard() }
+          // Jump to the next cluster after the damage and read on from there.
+          val from = maxOf(input.position, lastResync + 1)
+          val next = findCluster(dataSource, from, length)
+          if (next < 0) break // nothing readable after the damage: keep what was copied
+          lastResync = next
+          dataSource.close()
+          dataSource.open(DataSpec.Builder().setUri(uri).setPosition(next).setLength(if (length < 0) C.LENGTH_UNSET.toLong() else length - next).build())
+          input = DefaultExtractorInput(dataSource, next, length)
+          ex.seek(next, 0)
+          continue
+        }
         if (result == Extractor.RESULT_END_OF_INPUT) break
         if (result == Extractor.RESULT_SEEK) {
           // The extractor wants to read another part of the file (e.g. an index at the end).
@@ -112,6 +170,11 @@ internal class Remuxer(
         }
       }
       tracks.forEach { it.finish() }
+      if (gapStartUs != C.TIME_UNSET) gaps += Pair(gapStartUs, C.TIME_UNSET) // damaged up to the end
+      if (gaps.isNotEmpty()) {
+        val list = gaps.joinToString(", ") { (a, b) -> if (b == C.TIME_UNSET) "from ${formatTimeUs(a)} to the end" else "${formatTimeUs(a)}–${formatTimeUs(b)}" }
+        notes += "Skipped damaged parts of the original: $list. The copy jumps past them."
+      }
       if (!videoTaken) throw IllegalStateException("No video track was found in this file.")
       ok = true
     } finally {
@@ -132,6 +195,38 @@ internal class Remuxer(
     }
     val subs = tracks.filterIsInstance<SubtitleOut>().mapIndexedNotNull { i, t -> t.write(i) }
     return RemuxResult(subs, notes)
+  }
+
+  /**
+   * Reads on from [from] to the next MKV cluster start and returns its position, or -1 at the end
+   * of the file. Leaves [dataSource] open at some later position (the caller reopens it).
+   */
+  private fun findCluster(dataSource: DefaultDataSource, from: Long, length: Long): Long {
+    dataSource.close()
+    dataSource.open(DataSpec.Builder().setUri(uri).setPosition(from).setLength(if (length < 0) C.LENGTH_UNSET.toLong() else length - from).build())
+    val buf = ByteArray(1 shl 16)
+    var pos = from
+    var window = 0
+    var seen = 0L
+    var lastPercent = -1
+    while (true) {
+      if (cancelled) throw RemuxCancelled()
+      val n = dataSource.read(buf, 0, buf.size)
+      if (n == C.RESULT_END_OF_INPUT) return -1
+      for (i in 0 until n) {
+        window = (window shl 8) or (buf[i].toInt() and 0xFF)
+        seen++
+        if (seen >= 4 && window == MKV_CLUSTER_ID) return pos + i - 3
+      }
+      pos += n
+      if (length > 0) {
+        val percent = (pos * 99 / length).toInt()
+        if (percent != lastPercent) {
+          lastPercent = percent
+          onProgress(percent)
+        }
+      }
+    }
   }
 
   /** Finds the extractor for this file (MKV, MP4, TS, WebM, AVI, FLV…), with subtitles left as raw text. */
@@ -208,7 +303,17 @@ internal class Remuxer(
       end += length
     }
 
+    /** Drops bytes of a sample that was cut off by damaged data. */
+    open fun discard() {
+      end = 0
+    }
+
     override fun sampleMetadata(timeUs: Long, flags: Int, size: Int, offset: Int, cryptoData: TrackOutput.CryptoData?) {
+      if (gapStartUs != C.TIME_UNSET && timeUs > gapStartUs) {
+        gaps += Pair(gapStartUs, timeUs)
+        gapStartUs = C.TIME_UNSET
+      }
+      if (timeUs > lastTimeUs) lastTimeUs = timeUs
       val start = end - offset - size
       if (start < 0) return
       if (cryptoData == null) {
@@ -245,6 +350,13 @@ internal class Remuxer(
 
   private inner class VideoOut : Out() {
     private var track = -2 // -2: not decided yet, -1: skipped
+    /** After skipping damaged data, frames before the next key frame can't be decoded: leave them out. */
+    private var needKeyFrame = false
+
+    override fun discard() {
+      super.discard()
+      needKeyFrame = true
+    }
 
     override fun onSample(data: ByteArray, start: Int, size: Int, timeUs: Long, flags: Int) {
       if (track == -2) {
@@ -260,6 +372,10 @@ internal class Remuxer(
           MimeTypes.isImage(f.sampleMimeType) || f.sampleMimeType == MimeTypes.VIDEO_MJPEG -> -1
           else -> throw UnsupportedVideoException(f.sampleMimeType)
         }
+      }
+      if (needKeyFrame) {
+        if (flags and C.BUFFER_FLAG_KEY_FRAME == 0) return
+        needKeyFrame = false
       }
       if (track >= 0) write(track, data, start, size, timeUs, flags)
     }
