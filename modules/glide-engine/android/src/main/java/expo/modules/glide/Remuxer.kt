@@ -132,8 +132,9 @@ internal class Remuxer(
         if (cancelled) throw RemuxCancelled()
         val result = try {
           ex.read(input, position)
-        } catch (e: ParserException) {
+        } catch (e: Exception) {
           // Invalid data (e.g. a run of zero bytes where a download never filled in a piece).
+          if (!isDamagedData(e)) throw e
           if (ex !is MatroskaExtractor) throw DamagedFileException(lastTimeUs, canSkip = false)
           if (!skipDamage) {
             if (!onDamaged(lastTimeUs)) throw DamagedFileException(lastTimeUs, canSkip = true)
@@ -195,6 +196,26 @@ internal class Remuxer(
     }
     val subs = tracks.filterIsInstance<SubtitleOut>().mapIndexedNotNull { i, t -> t.write(i) }
     return RemuxResult(subs, notes)
+  }
+
+  /**
+   * Whether the extractor itself failed on the file's bytes (as opposed to our own code, which it
+   * calls for every sample). Media3 reports bad data in several ways: ParserException, but also
+   * IllegalStateException ("No valid varint length mask found" for a zero byte in an MKV),
+   * index/size errors from garbage lengths, and EOFException when the file ends early.
+   */
+  private fun isDamagedData(e: Exception): Boolean {
+    if (e is ParserException) return true
+    if (e !is EOFException && e !is IllegalStateException && e !is IllegalArgumentException &&
+      e !is IndexOutOfBoundsException && e !is NegativeArraySizeException
+    ) return false
+    // The first frame that is either Media3's extractor or Glide decides whose failure it is.
+    for (frame in e.stackTrace) {
+      val c = frame.className
+      if (c.startsWith("expo.modules.glide.")) return false
+      if (c.startsWith("androidx.media3.extractor.")) return true
+    }
+    return false
   }
 
   /**
